@@ -6,8 +6,8 @@ You will need to confirm that the inputData and workspace are correct,
 but otherwise the script shouldn't need ammending.
 """
 
-import sys, string, os, time, math, ConfigParser
-import arcpy
+##import sys, string, os, time, math, ConfigParser
+import arcpy, time
 arcpy.env.overwriteOutput = True
 
 #-------------------------------------------------------------------------------
@@ -21,7 +21,7 @@ gain = "Gain"
 loss = "Loss"
 
 # Location for a repository FGDB
-workspace = "P:\\habitrak\\working\\workspace.gdb"
+workspace = "P:\\habitrak\\data\\Update_SDE_Habitrak.gdb"
 
 #-------------------------------------------------------------------------------
 
@@ -91,7 +91,7 @@ try:
     arcpy.RemoveJoin_management("prjlyr3","DOMAIN_GACTIVITY")
 
     arcpy.Dissolve_management("projects","ECO_MSCP_HABITRAK_CN",
-                              "TRACKNO;PROJTYPE;PROJNAME;APPLICANT;ACTIVITY;ACTIVITY_DATE;MGMTDESCRIP;ACRES")
+                              "TRACKNO;PROJTYPE;PROJNAME;APPLICANT;ACTIVITY;ACTIVITY_DATE;MGMTDESCRIP;ACRES", multi_part = 'SINGLE_PART')
     arcpy.CalculateField_management("ECO_MSCP_HABITRAK_CN","ACRES","[SHAPE_area] / 43560")
 
     print "\n" + str(workspace) + "\\ECO_MSCP_HABITRAK_CN has been updated..."
