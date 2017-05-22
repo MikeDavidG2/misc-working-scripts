@@ -45,19 +45,20 @@ def main():
     #---------------------------------------------------------------------------
     #                              Set variables
 
-    # FGDB to import the Excel table info, user must create FGDB
-    FGDB_path = r'P:\CIP\20170403_CIP_to_App\Data\CIP_Imported_Excel.gdb'
+    # FGDB to import the Excel table info, user must create FGDB, this is a wkg directory,
+    # NOT the directory of the Feature Class to update
+    FGDB_path = r'P:\CIP\20170403_CIP_to_App\Data\CIP_Imported_Excel.gdb'          # Full path; WILL POSSIBLY CHANGE BETWEEN RUNNING SCRIPT
 
     # Excel file info
-    excel_file        = r'P:\CIP\20170403_CIP_to_App\Working\Test\CIP_5YEAR_POLY_testing.xlsx'  # Full path
-    sheet_to_import   = 'CIP_5YEAR_POLY'  # Sheet name
-    join_field        = 'PROJECT_ID'  # Field used to join (primary key)
+    excel_file        = r"P:\CIP\20170403_CIP_to_App\Working\CIP_5YEAR_POLY.xlsx"  # Full path; WILL POSSIBLY CHANGE BETWEEN RUNNING SCRIPT
+    sheet_to_import   = 'CIP_5YEAR_POLY'  # Sheet name                      ; Should be constant
+    join_field        = 'PROJECT_ID'      # Field used to join (primary key); Should be constant
 
-    # SDW connection info
-    sdw_connection        = r'P:\CIP\20170403_CIP_to_App\Data\Fake_SDW.gdb'  # Could change between users
-    sdw_cip_fc_name       = 'CIP_5YEAR_POLY'
-    sdw_cip_fc_path       = os.path.join(sdw_connection, sdw_cip_fc_name)
-    sdw_lueg_updates_path = os.path.join(sdw_connection, 'SDW.PDS.LUEG_UPDATES')
+    # SDW connection info, this is the FC to be updated
+    sdw_connection        = r'P:\CIP\20170403_CIP_to_App\Data\CIP.gdb'     # Could change between users
+    sdw_cip_fc_name       = 'CIP_5YEAR_POLY'                               # Should be constant
+    sdw_cip_fc_path       = os.path.join(sdw_connection, sdw_cip_fc_name)  # Should be constant
+    sdw_lueg_updates_path = os.path.join(sdw_connection, 'SDW.PDS.LUEG_UPDATES')  # Should be constant
 
     # List of Fields to update in SDW Feature Class
     # 'PROJECT_ID' not in below list since that is the field used to join
@@ -66,7 +67,7 @@ def main():
                       'EST_PR_CST', 'FUNDING_STATUS', 'FUNDING', 'LENGTH',
                       'PLANNING_GROUP', 'SUPERVISOR_DISTRICT', 'THOMAS_BROTHERS',
                       'PROJECT_MANAGER', 'PM_EMAIL', 'PM_PHONE', 'ORACLE_NUMBER',
-                      'DESCRIPTION']
+                      'DESCRIPTION', 'URL_LINK']
 
     # Dictionary of [TYPE] domains.
     #The left side is the text in Excel : The right side is the numerical value the [TYPE] field expects in SDW
@@ -149,7 +150,7 @@ def main():
         print '  No features in SDW have been updated.'
 
     # TODO: Uncomment the below raw_input
-##    raw_input('Press ENTER to finish.')
+    raw_input('Press ENTER to finish.')
 
 #-------------------------------------------------------------------------------
 #*******************************************************************************
