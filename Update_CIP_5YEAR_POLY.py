@@ -47,15 +47,15 @@ def main():
 
     # FGDB to import the Excel table info, user must create FGDB, this is a wkg directory,
     # NOT the directory of the Feature Class to update
-    FGDB_path = r'P:\CIP\20170403_CIP_to_App\Data\CIP_Imported_Excel.gdb'          # Full path; WILL POSSIBLY CHANGE BETWEEN RUNNING SCRIPT
+    FGDB_path = r'P:\CIP\20170403_CIP_to_App\Data\CIP_Imported_Excel.gdb'          # Full path; Should be constant
 
     # Excel file info
-    excel_file        = r"P:\CIP\20170403_CIP_to_App\Working\CIP_5YEAR_POLY.xlsx"  # Full path; WILL POSSIBLY CHANGE BETWEEN RUNNING SCRIPT
+    excel_file        = r"P:\CIP\20170403_CIP_to_App\Working\CIP_5YEAR_POLY.xlsx"  # Full path; WILL POSSIBLY CHANGE
     sheet_to_import   = 'CIP_5YEAR_POLY'  # Sheet name                      ; Should be constant
     join_field        = 'PROJECT_ID'      # Field used to join (primary key); Should be constant
 
-    # SDW connection info, this is the FC to be updated
-    sdw_connection        = r'P:\CIP\20170403_CIP_to_App\Data\CIP.gdb'     # Could change between users
+    # SDW connection info, this is the FC to be updated (can be pointed to FGDB to update a FGDB)
+    sdw_connection        = r'P:\CIP\20170403_CIP_to_App\Data\CIP.gdb'     # WILL POSSIBLY CHANGE
     sdw_cip_fc_name       = 'CIP_5YEAR_POLY'                               # Should be constant
     sdw_cip_fc_path       = os.path.join(sdw_connection, sdw_cip_fc_name)  # Should be constant
     sdw_lueg_updates_path = os.path.join(sdw_connection, 'SDW.PDS.LUEG_UPDATES')  # Should be constant
@@ -368,7 +368,7 @@ def Validate_Table(sdw_field_ls, imported_table, sdw_cip_fc_path):
         else:
             proj_ids_not_in_imprt_tbl.append(project_id)
 
-    print '    There is/are {} project(s) that is/are in SDW, but not in the import table.'.format(len(proj_ids_not_in_imprt_tbl))
+    print '    There are {} projects that are in SDW, but not in the import table.'.format(len(proj_ids_not_in_imprt_tbl))
 
     print '  Done validating PROJECT_ID in SDW\n'
 
@@ -392,7 +392,7 @@ def Validate_Table(sdw_field_ls, imported_table, sdw_cip_fc_path):
         else:
             proj_ids_not_in_sdw.append(project_id)
 
-    print '    There is/are {} project(s) that is/are in the import table, but not in SDW.'.format(len(proj_ids_not_in_sdw))
+    print '    There are {} projects that are in the import table, but not in SDW.'.format(len(proj_ids_not_in_sdw))
 
     print '  Done validating PROJECT_IDs in import table\n'
 
