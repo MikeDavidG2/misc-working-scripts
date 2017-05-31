@@ -55,10 +55,10 @@ def main():
     join_field        = 'PROJECT_ID'      # Field used to join (primary key); Should be constant
 
     # SDW connection info, this is the FC to be updated (can be pointed to FGDB to update a FGDB)
-    sdw_connection        = r'P:\CIP\20170403_CIP_to_App\Data\CIP.gdb'     # WILL POSSIBLY CHANGE
+    sdw_connection        = r'V:\sde_load.gdb\workspace'     # WILL POSSIBLY CHANGE
     sdw_cip_fc_name       = 'CIP_5YEAR_POLY'                               # Should be constant
     sdw_cip_fc_path       = os.path.join(sdw_connection, sdw_cip_fc_name)  # Should be constant
-    sdw_lueg_updates_path = os.path.join(sdw_connection, 'SDW.PDS.LUEG_UPDATES')  # Should be constant
+    sdw_lueg_updates_path = os.path.join(sdw_connection, 'SDW.PDS.LUEG_UPDATES')  # Should be constant, only used for reporting
 
     # List of Fields to update in SDW Feature Class
     # 'PROJECT_ID' not in below list since that is the field used to join
@@ -101,7 +101,6 @@ def main():
     # Get list of the project id's that were in SDW, but not in import table
     # Get list of the project id's that were in import table, but not in SDW
     valid_table, ids_not_in_imprt_tbl, ids_not_in_sdw  = Validate_Table(sdw_field_ls, imported_table, sdw_cip_fc_path)
-
 
     if valid_table == True:
         # If import table was valid, Process table
@@ -248,9 +247,11 @@ def Validate_Table(sdw_field_ls, imported_table, sdw_cip_fc_path):
              Blank projects are not really CIP projects,
              they exist only because there are values embedded in the PROJECT_ID
              field to minimize the amount of editing GIS needs to do on
-             CIP's Excel sheet.
+             CIP's Excel sheet.  For example, project 20000 exists in the PROJECT_ID
+             field, but this is a blank project until CIP enteres a project name
+             in the NAME field.
 
-          2) Validates that the fields that need to be updated in SDW are found
+          2) Validates that the fields which need to be updated in SDW are found
              in the import table.
              "valid_table = False" if not.
 
@@ -261,7 +262,7 @@ def Validate_Table(sdw_field_ls, imported_table, sdw_cip_fc_path):
           3.2) Validates that all PROJECT_ID's in the import table are also in SDW,
                "valid_table = True" regardless of this validation result.
 
-          4) Validates that every project has a PROJECT_ID and a NAME.
+          4) Validates that every project has both a PROJECT_ID and a NAME.
              "valid_table = False" if any project is missing one of these.
     """
 
