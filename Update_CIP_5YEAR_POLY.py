@@ -278,6 +278,10 @@ def Validate_Table(sdw_field_ls, imported_table, sdw_cip_fc_path):
 
           4) Validates that every project has both a PROJECT_ID and a NAME.
              "valid_table = False" if any project is missing one of these.
+
+          5) Validate that every project NAME in SDW is the same as in the import
+             table.
+             "valid_table = True" regardless of this validation result.
     """
 
     print 'Starting Validate_Table()...\n'
