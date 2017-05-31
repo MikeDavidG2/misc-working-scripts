@@ -100,18 +100,16 @@ def main():
     # Get a boolean (True/False) if valid,
     # Get list of the project id's that were in SDW, but not in import table
     # Get list of the project id's that were in import table, but not in SDW
-    valid_table, ids_not_in_imprt_tbl, ids_not_in_sdw  = Validate_Table(sdw_field_ls, imported_table, sdw_cip_fc_path)
+    valid_table, ids_not_in_imprt_tbl, ids_not_in_sdw, ids_w_NAME_not_match, NAME_in_SDW, NAME_in_imprt_tbl = Validate_Table(sdw_field_ls, imported_table, sdw_cip_fc_path)
 
     if valid_table == True:
         # If import table was valid, Process table
         Process_Table(imported_table, type_dict)
 
-        # Join processed table to SDW CIP Feature Class
-        joined_fc = Join_2_Objects(sdw_cip_fc_path, join_field, imported_table, join_field, 'KEEP_COMMON')
-
         # Update fields from imported table to SDW Feature Class
-        Update_Fields(joined_fc, sdw_cip_fc_name, imported_table, sdw_field_ls)
+        Update_Fields(sdw_cip_fc_path, join_field, imported_table, sdw_field_ls)
 
+    #---------------------------------------------------------------------------
     #---------------------------------------------------------------------------
     #                          End of script reporting
 
@@ -140,7 +138,24 @@ def main():
         for proj in ids_not_in_sdw:
             print '  {}'.format(proj)
         print '  This means there is no feature in SDW to update attributes.  Contact CIP for project footprint.'
-        print '  Please create a polygon in SDW with the above project number to update this project with its attributes, all other attributes in SDW can be <NULL>\n'
+        print '  Please create a polygon in SDW with the above project number to update this project with its attributes, all other attributes in SDW can be <NULL>.\n'
+
+    # If there were any projects with mismatched NAMEs, warn user that those projects' attributes were not updated by the script
+    if (len(ids_w_NAME_not_match) != 0):
+        count = 0
+        print '*** WARNING! The below PROJECT_ID(s) have mismacthing NAMEs: ***'
+        for proj in ids_w_NAME_not_match:
+            print '  PROJECT_ID: "{}" has a value in SDW of: "{}" and a value in the imported table of: "{}"'.format(proj, NAME_in_SDW[count], NAME_in_imprt_tbl[count])
+            count += 1
+
+        print '\n  The projects in SDW did not have their attributes updated by the script.'
+        print '  This happens when a project NAME has been changed in the Excel sheet.'
+        print '  Please find out if A) The NAME was legitemately and intentionally changed by CIP for the specific project (then make the correction in SDW),'
+        print '    OR B) if the original project was deleted in the Excel sheet and the PROJECT_ID was reused for a new project.'
+        print '    If B, then:'
+        print '      1) The attribute information from the deleted project SDW should be entered back into the import table for the correct PROJECT_ID.'
+        print '      2) The new project that was in Excel that is reusing the original PROJECT_ID, should be reassigned a new and unused PROJECT_ID.'
+        print '      3) Inform CIP that they cannot delete projects from the Excel spreadsheet and that PROJECT_IDs need to remain unique.'
 
     # If the import table was not valid, have this error the last item in the report
     if valid_table == False:
@@ -148,7 +163,6 @@ def main():
         print '  Validate_Table function has found missing / incorrect info.  Please see above for *** ERROR! *** messages.'
         print '  No features in SDW have been updated.'
 
-    # TODO: Uncomment the below raw_input
     raw_input('Press ENTER to finish.')
 
 #-------------------------------------------------------------------------------
@@ -266,7 +280,7 @@ def Validate_Table(sdw_field_ls, imported_table, sdw_cip_fc_path):
              "valid_table = False" if any project is missing one of these.
     """
 
-    print 'Starting Validate_Table()...'
+    print 'Starting Validate_Table()...\n'
 
     valid_table = True  # Will change to 'False' if we want to stop script
 
@@ -332,7 +346,7 @@ def Validate_Table(sdw_field_ls, imported_table, sdw_cip_fc_path):
 
     #---------------------------------------------------------------------------
     #---------------------------------------------------------------------------
-    # 3)               Validate that PROJECT_ID's exist in both datasets
+    #            3)Validate that PROJECT_ID's exist in both datasets
 
     # Get list of PROJECT_ID's in SDW FC
     sdw_project_ids = []
@@ -351,7 +365,7 @@ def Validate_Table(sdw_field_ls, imported_table, sdw_cip_fc_path):
     imprt_tbl_project_ids.sort()
 
     #---------------------------------------------------------------------------
-    # 3.1) If a PROJECT_ID exists in SDW that is not in the import table,
+    #      3.1) If a PROJECT_ID exists in SDW that is not in the import table,
     # warn user but do not change valid_table
     print '  Validating PROJECT_ID in SDW is also in import table:'
 
@@ -374,8 +388,8 @@ def Validate_Table(sdw_field_ls, imported_table, sdw_cip_fc_path):
     print '  Done validating PROJECT_ID in SDW\n'
 
     #---------------------------------------------------------------------------
-    # 3.2) Make sure that every PROJECT_ID in the import table also exists in SDW
-    # warn user but do not change valid_table
+    #        3.2) Make sure that every PROJECT_ID in the import table also
+    # exists in SDW warn user but do not change valid_table
 
     print '  Validating PROJECT_ID in import table is also in SDW:'
 
@@ -398,26 +412,86 @@ def Validate_Table(sdw_field_ls, imported_table, sdw_cip_fc_path):
     print '  Done validating PROJECT_IDs in import table\n'
 
     #---------------------------------------------------------------------------
-    # 4) Make sure that every project has a PROJECT_ID and a NAME
+    #        4) Make sure that every project has a PROJECT_ID and a NAME
 
     print '  Validating that every project has a PROJECT_ID and a NAME'
 
     # Where clause to select only the invalid rows
+    num_errors = 0  # Counter of this type of error
     where_clause = "PROJECT_ID IS NULL OR NAME = ''"
     with arcpy.da.SearchCursor(imported_table, ['PROJECT_ID', 'NAME'], where_clause) as cursor:
         for row in cursor:
             print '*** ERROR! The below project is missing PROJECT_ID / NAME (or both), both are needed for a valid table. ***'
             print '    PROJECT_ID: "{}"      NAME: "{}"'.format(row[0], row[1])
             valid_table = False
+            num_errors += 1
+
+    print '    There are: {} projects that are missing either a PROJECT_ID or a NAME'.format(num_errors)
 
     print '  Done Validating PROJECT_ID and NAME\n'
 
     #---------------------------------------------------------------------------
+    #         5) Validate that every project NAME in SDW is the same as in
+    #            the import table
 
-    print '  valid_table = {}'.format(valid_table)
+    print '  Validating that every project NAME in SDW matches the project NAME in the imported table'
+
+    # Join the SDW FC and the imported table on PROJECT_ID to compare the NAME fields
+    sdw_cip_join_imprt_tbl = Join_2_Objects(sdw_cip_fc_path, 'PROJECT_ID',
+                                               imported_table, 'PROJECT_ID', 'KEEP_COMMON')
+
+    # Get the basename of the imported table, i.e. "CIP_5YEAR_POLY_2017_5_15__9_38_50"
+    # Will be used in 'where_clause' below
+    import_table_name = os.path.basename(imported_table)
+
+    # Get the basename of the sdw_cip_fc_path i.e. 'CIP_5YEAR_POLY'
+    # Will be used in the 'where_clause' and 'SearchCursor' below
+    sdw_cip_fc_name = os.path.basename(sdw_cip_fc_path)
+
+    # Lists to hold report info
+    ids_w_NAME_not_match = []
+    NAME_in_SDW = []
+    NAME_in_imprt_tbl = []
+    num_errors = 0
+
+    # Create SearchCursor
+    where_clause = '{}.NAME <> {}.NAME'.format(sdw_cip_fc_name, import_table_name)
+
+    with arcpy.da.SearchCursor(sdw_cip_join_imprt_tbl,
+                               ['{}.PROJECT_ID'.format(sdw_cip_fc_name), '{}.NAME'.format(sdw_cip_fc_name), '{}.NAME'.format(import_table_name)],
+                               where_clause) as cursor:
+        for row in cursor:
+            # Append row value to lists
+            ids_w_NAME_not_match.append(row[0])
+            NAME_in_SDW.append(row[1])
+            NAME_in_imprt_tbl.append(row[2])
+
+            # Increment error counter
+            num_errors += 1
+
+    print '    There are: {} projects that have mismatching values in the NAME field'.format(num_errors)
+
+    # If there were projects with mismatching NAME values, change the PROJECT_ID
+    # value in the imported table to change_value so that it will not be joined
+    # in Update_Fields() and will not overwrite any SDW attributes
+    if num_errors != 0:
+        change_value = -99
+        print '    Changing these {} PROJECT_IDs in imported table with mismatching values to: {}'.format(num_errors, change_value)
+
+        # Create UpdateCursor for imported table
+        with arcpy.da.UpdateCursor(imported_table, ['PROJECT_ID']) as cursor:
+            for row in cursor:
+                if row[0] in ids_w_NAME_not_match:
+                    row[0] = change_value
+                    cursor.updateRow(row)
+
+    print '  Done Validating project NAME matches SDW and imported table\n'
+    #---------------------------------------------------------------------------
+
+    print '  valid_table = {}\n'.format(valid_table)
     print 'Finished Validating Table\n'
 
-    return valid_table, proj_ids_not_in_imprt_tbl, proj_ids_not_in_sdw
+    return valid_table, proj_ids_not_in_imprt_tbl, proj_ids_not_in_sdw, ids_w_NAME_not_match, NAME_in_SDW, NAME_in_imprt_tbl
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -426,8 +500,8 @@ def Validate_Table(sdw_field_ls, imported_table, sdw_cip_fc_path):
 def Process_Table(imported_table, type_dict):
     """
     PARAMETERS:
-      imported_table: The path of the imported_table generated from Excel_To_Table().
-        we will perform calculations on this table before joining to SDW FC.
+      imported_table (str): The full path of the imported_table generated from
+        Excel_To_Table()
 
       type_dict: The dictionary defined in main() that has the string and code
         values of all the types in the domain CIP_TYPE.
@@ -477,6 +551,54 @@ def Process_Table(imported_table, type_dict):
 
     print 'Finished Processing Table\n'
 
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#                         FUNCTION: Update_Fields()
+
+def Update_Fields(sdw_cip_fc_path, join_field, imported_table, sdw_field_ls):
+    """
+    PARAMETERS:
+      sdw_cip_fc_path (str): The full path of the SDW CIP Feature Class.
+
+      join_field (str): The name of the field used to join two objects.
+
+      imported_table (str): The full path of the imported_table generated from
+        Excel_To_Table()
+
+      sdw_field_ls (list): List of the fields that are in SDW (and imported table)
+        that will be updated.
+
+    RETURNS:
+      none
+
+    FUNCTION:
+      To calculate the fields in 'sdw_field_ls' list from the imported
+      table to the SDW feature class.
+    """
+
+    print 'Starting Update_Fields()...'
+
+    joined_fc = Join_2_Objects(sdw_cip_fc_path, join_field, imported_table, join_field, 'KEEP_COMMON')
+
+    # Get the basename of the imported table, i.e. "CIP_5YEAR_POLY_2017_5_15__9_38_50"
+    # Will be used in 'expression' below
+    import_table_name = os.path.basename(imported_table)
+
+    # Get the basename of the sdw_cip_fc_path i.e. 'CIP_5YEAR_POLY'
+    # Will be used in the 'where_clause' and 'SearchCursor' below
+    sdw_cip_fc_name = os.path.basename(sdw_cip_fc_path)
+
+    for field in sdw_field_ls:
+
+        field_to_calc = '{}.{}'.format(sdw_cip_fc_name, field)
+        expression    = '!{}.{}!'.format(import_table_name, field)
+
+        print '  In joined_fc, calculating field: "{}", to equal: "{}"'.format(field_to_calc, expression)
+        arcpy.CalculateField_management(joined_fc, field_to_calc, expression, 'PYTHON_9.3')
+
+    print 'Finished Updating Fields\n'
+
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
 #                          FUNCTION Join 2 Objects
@@ -513,26 +635,26 @@ def Join_2_Objects(target_obj, target_join_field, to_join_obj, to_join_field, jo
            'to_join_field'
     """
 
-    print 'Starting Join_2_Objects()...'
+    print '    Starting Join_2_Objects()...'
 
     # Create the layer or view for the target_obj using try/except
     try:
         arcpy.MakeFeatureLayer_management(target_obj, 'target_obj')
-        print '  Made FEATURE LAYER for {}'.format(target_obj)
+        print '      Made FEATURE LAYER for {}'.format(target_obj)
     except:
         arcpy.MakeTableView_management(target_obj, 'target_obj')
-        print '  Made TABLE VIEW for {}'.format(target_obj)
+        print '      Made TABLE VIEW for {}'.format(target_obj)
 
     # Create the layer or view for the to_join_obj using try/except
     try:
         arcpy.MakeFeatureLayer_management(to_join_obj, 'to_join_obj')
-        print '  Made FEATURE LAYER for {}'.format(to_join_obj)
+        print '      Made FEATURE LAYER for {}'.format(to_join_obj)
     except:
         arcpy.MakeTableView_management(to_join_obj, 'to_join_obj')
-        print '  Made TABLE VIEW for {}'.format(to_join_obj)
+        print '      Made TABLE VIEW for {}'.format(to_join_obj)
 
     # Join the layers
-    print '  Joining layers'
+    print '      Joining layers'
     arcpy.AddJoin_management('target_obj', target_join_field, 'to_join_obj', to_join_field, join_type)
 
     # Print the fields (only really needed during testing)
@@ -541,54 +663,10 @@ def Join_2_Objects(target_obj, target_join_field, to_join_obj, to_join_field, jo
 ##    for field in fields:
 ##        print '    ' + field.name
 
-    print 'Finished Join_2_Objects()...\n'
+    print '    Finished Join_2_Objects()'
 
     # Return the layer/view of the joined object so it can be processed
     return 'target_obj'
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-#                         FUNCTION: Update_Fields()
-
-def Update_Fields(joined_fc, sdw_cip_fc_name, imported_table, sdw_field_ls):
-    """
-    PARAMETERS:
-        joined_fc: The in-memory object from Join_2_Objects() that contains the
-          SDW layer joined to the imported table.
-
-        sdw_cip_fc_name: The name of the FC in SDW that we have joined to.
-          Used in 'field_to_calc'.
-
-        imported_table: Used to get the basename of the imported table.  Used in
-          'expression'.
-
-        sdw_field_ls: List of the fields that are in SDW (and imported table)
-          that will be updated.  Used in a loop to run through all the fields
-          to calculate.
-
-    RETURNS:
-        none
-
-    FUNCTION:
-        To calculate the fields in 'sdw_field_ls' list from the imported
-        table to the SDW feature class.
-    """
-
-    print 'Starting Update_Fields()...'
-
-    # Get the basename of the imported table, i.e. "CIP_5YEAR_POLY_2017_5_15__9_38_50"
-    # Will be used in 'expression' below
-    import_table_name = os.path.basename(imported_table)
-
-    for field in sdw_field_ls:
-
-        field_to_calc = '{}.{}'.format(sdw_cip_fc_name, field)
-        expression    = '!{}.{}!'.format(import_table_name, field)
-
-        print '  In joined_fc, calculating field: "{}", to equal: "{}"'.format(field_to_calc, expression)
-        arcpy.CalculateField_management(joined_fc, field_to_calc, expression, 'PYTHON_9.3')
-
-    print 'Finished Updating Fields\n'
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
