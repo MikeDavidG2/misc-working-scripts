@@ -1,3 +1,9 @@
+""" IMPORTANT!!!
+This script is a GitHub backup of a version the live version that is located
+at:  P:\habitrak\Scripts\Python_Scripts\TestHabitrakParcels.py
+This is because an ArcGIS tool has been created in the P:\habitrak\Scripts folder
+that uses the live version.
+"""
 #-------------------------------------------------------------------------------
 # Name:        SortHabitrakParcels.py
 """
