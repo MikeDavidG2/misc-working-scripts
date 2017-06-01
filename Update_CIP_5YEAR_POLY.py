@@ -51,14 +51,14 @@ def main():
 
     # Excel file info
     excel_file        = r"P:\CIP\20170403_CIP_to_App\Working\CIP_5YEAR_POLY.xlsx"  # Full path; WILL POSSIBLY CHANGE
-    sheet_to_import   = 'CIP_5YEAR_POLY'  # Sheet name                      ; Should be constant
-    join_field        = 'PROJECT_ID'      # Field used to join (primary key); Should be constant
+    sheet_to_import   = 'CIP_5YEAR_POLY'  # Sheet name                                        ; Should be constant
+    join_field        = 'PROJECT_ID'      # Field used to join (primary key)                  ; Should be constant
 
     # SDW connection info, this is the FC to be updated (can be pointed to FGDB to update a FGDB)
-    sdw_connection        = r'V:\sde_load.gdb\workspace'     # WILL POSSIBLY CHANGE
-    sdw_cip_fc_name       = 'CIP_5YEAR_POLY'                               # Should be constant
-    sdw_cip_fc_path       = os.path.join(sdw_connection, sdw_cip_fc_name)  # Should be constant
-    sdw_lueg_updates_path = os.path.join(sdw_connection, 'SDW.PDS.LUEG_UPDATES')  # Should be constant, only used for reporting
+    sdw_connection        = r'Database Connections\AD@ATLANTIC@SDW.sde\SDW.PDS.CIP'     # WILL POSSIBLY CHANGE
+    sdw_cip_fc_name       = 'SDW.PDS.CIP_5YEAR_POLY'                                    # Should be constant
+    sdw_cip_fc_path       = os.path.join(sdw_connection, sdw_cip_fc_name)               # Should be constant
+    ##sdw_lueg_updates_path = os.path.join(sdw_connection, 'SDW.PDS.LUEG_UPDATES')        # Should be constant, only used for reporting
 
     # List of Fields to update in SDW Feature Class
     # 'PROJECT_ID' not in below list since that is the field used to join
@@ -97,9 +97,12 @@ def main():
     Excel_To_Table(excel_file, imported_table, sheet_to_import)
 
     # Validate the imported table data (make sure it has the correct fields)
-    # Get a boolean (True/False) if valid,
-    # Get list of the project id's that were in SDW, but not in import table
-    # Get list of the project id's that were in import table, but not in SDW
+    # Get a boolean (True/False) if valid:  valid_table
+    # Get list of the project id's that were in SDW, but not in import table:  ids_not_in_imprt_tbl
+    # Get list of the project id's that were in import table, but not in SDW:  ids_not_in_sdw
+    # Get list of the project id's that had a NAME value in the import table that does not match the SDW value:  ids_w_NAME_not_match
+    # Get list of the project names that are in SDW:  NAME_in_SDW
+    # Get list of the project names that are in the imported table:  NAME_in_imprt_tbl
     valid_table, ids_not_in_imprt_tbl, ids_not_in_sdw, ids_w_NAME_not_match, NAME_in_SDW, NAME_in_imprt_tbl = Validate_Table(sdw_field_ls, imported_table, sdw_cip_fc_path)
 
     if valid_table == True:
@@ -121,7 +124,7 @@ def main():
     if valid_table == True:
         print '***Updated the data in BLUE SDW, but you are NOT DONE YET! To update BLUE SDE please:***'
         print '  1) Review the updated Feature Class at: {}'.format(sdw_cip_fc_path)
-        print '  2) Then, update the date for: {}, in: {}'.format( sdw_cip_fc_name, sdw_lueg_updates_path)
+        print '  2) Then, update the date for: CIP_5YEAR_POLY, in: Database Connections\AD@ATLANTIC@SDW.sde\SDW.PDS.LUEG_UPDATES'
         print '  3) In a few days, check to confirm that the changes from BLUE SDE have replicated to County SDEP\n'
 
     # If there were any projects in SDW, but not in import table warn user
@@ -148,9 +151,10 @@ def main():
             print '  PROJECT_ID: "{}" has a value in SDW of: "{}" and a value in the imported table of: "{}"'.format(proj, NAME_in_SDW[count], NAME_in_imprt_tbl[count])
             count += 1
 
-        print '\n  The projects in SDW did not have their attributes updated by the script.'
-        print '  This happens when a project NAME has been changed in the Excel sheet.'
-        print '  Please find out if A) The NAME was legitemately and intentionally changed by CIP for the specific project (then make the correction in SDW),'
+        print '\n  The above projects did not have their attributes updated in SDW by the imported table because of an error.'
+        print '  This error happens when a project NAME has been changed in the Excel sheet.'
+        print '  Please find out if:'
+        print '    A) The NAME was legitemately and intentionally changed by CIP for the specific project (then make the correction in SDW),'
         print '    OR B) if the original project was deleted in the Excel sheet and the PROJECT_ID was reused for a new project.'
         print '    If B, then:'
         print '      1) The attribute information from the deleted project SDW should be entered back into the import table for the correct PROJECT_ID.'
@@ -644,18 +648,18 @@ def Join_2_Objects(target_obj, target_join_field, to_join_obj, to_join_field, jo
     # Create the layer or view for the target_obj using try/except
     try:
         arcpy.MakeFeatureLayer_management(target_obj, 'target_obj')
-        print '      Made FEATURE LAYER for {}'.format(target_obj)
+        print '      Made FEATURE LAYER for: {}'.format(target_obj)
     except:
         arcpy.MakeTableView_management(target_obj, 'target_obj')
-        print '      Made TABLE VIEW for {}'.format(target_obj)
+        print '      Made TABLE VIEW for: {}'.format(target_obj)
 
     # Create the layer or view for the to_join_obj using try/except
     try:
         arcpy.MakeFeatureLayer_management(to_join_obj, 'to_join_obj')
-        print '      Made FEATURE LAYER for {}'.format(to_join_obj)
+        print '      Made FEATURE LAYER for: {}'.format(to_join_obj)
     except:
         arcpy.MakeTableView_management(to_join_obj, 'to_join_obj')
-        print '      Made TABLE VIEW for {}'.format(to_join_obj)
+        print '      Made TABLE VIEW for: {}'.format(to_join_obj)
 
     # Join the layers
     print '      Joining layers'
