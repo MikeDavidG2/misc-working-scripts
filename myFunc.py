@@ -865,6 +865,81 @@ def Test_Schema_Lock(dataset):
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
+#                         FUNCTION Update_Cursor_Func()
+def Update_Cursor_Func(fc_or_table, field_to_update, id_field, where_clause, value):
+    """
+    PARAMETERS:
+      fc_or_table (str): Full path to a Feature Class or Table to be updated.
+
+      field_to_update (str): Name of the field to be updated.
+
+      id_field (str): Name of the field that acts as a record identifier for the
+        user.  Not crucial for the function to run, but useful for the user to
+        see which record(s) modified by this function.
+
+      where_clause (str): A SQL string used to return only records that satisfy
+        this clause.  Examples that can be directly copied and pasted:
+          '"LAYER_NAME" = \'ECO_MSCP_CN_NORTH_DRAFT\''
+          '"LAYER_NAME" like \'HYD%\''
+
+      value (str/obj/num): Can be a string (if going into a text field)
+                               or a datetime object (if going into a date field)
+                               or a number (if going into a numerical field)
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      To update a 'field_to_update' in a 'fc_or_table' with the 'value' supplied
+      using a 'where_clause' to refine the rows that will be updated.
+
+    NOTE:
+      This function uses the older arcpy.UpdateCursor() function.  While this
+      method works without having to start an edit session if updating an SDE
+      (unlike the arcpy.da.UpdateCursor which requires an edit session), the
+      arcpy.UpdateCursor is slower and older.
+      It is at risk to be discontinued at some point in the future.
+    """
+
+    import arcpy
+    print 'Starting Update_Cursor_Func()'
+
+    # Print statements with all the variables
+    print '  Updating fc or table  "{}"'.format(fc_or_table)
+    print '    Field being updated "{}"'.format(field_to_update)
+    print '                  where  {}'.format(where_clause)
+    print '             with value "{}"\n'.format(value)
+
+    #---------------------------------------------------------------------------
+    try:
+        cursor = arcpy.UpdateCursor(fc_or_table, where_clause)
+        row = cursor.next()
+        while row:
+            print '\n----------------------------------------------------------'
+            # Get and print the current value
+            id_to_print = row.getValue(id_field)
+            current_val = row.getValue(field_to_update)
+            print '  Current value for "{}" in field "{}" is "{}"'.format(id_to_print, field_to_update, current_val)
+
+            # Set the value and print the new value
+            row.setValue(field_to_update, value)
+            print '  New value "{}"'.format(row.getValue(field_to_update))
+
+            # Update and move to next row (if there is one)
+            cursor.updateRow(row)
+            row = cursor.next()
+
+        del cursor  # Delete the cursor in order for the updates to 'save'
+    except Exception as e:
+        print '*** ERROR with UpdateCursor() ***'
+        print str(e)
+
+    print '\nFinished Update_Cursor_Func()'
+
+    return
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 #                          FUNCTION Write_Print_To_Log()
 def Write_Print_To_Log(log_file):
     """
