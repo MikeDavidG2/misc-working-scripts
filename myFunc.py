@@ -571,7 +571,8 @@ def Get_List_Of_Parcels(rmaTrack, parcel_fc, roadBufferVal):
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
-#                          FUNCTION: Join_2_Objects
+#                          FUNCTION Join 2 Objects
+
 def Join_2_Objects(target_obj, target_join_field, to_join_obj, to_join_field, join_type):
     """
     PARAMETERS:
@@ -588,7 +589,7 @@ def Join_2_Objects(target_obj, target_join_field, to_join_obj, to_join_field, jo
         foreign key.
 
       join_type (str): Specifies what will be done with records in the input
-        that match a record in the join table.
+        that match a record in the join table. Valid values:
           KEEP_ALL
           KEEP_COMMON
 
@@ -602,36 +603,42 @@ def Join_2_Objects(target_obj, target_join_field, to_join_obj, to_join_field, jo
         1) Creating a layer or table view for each object ('target_obj', 'to_join_obj')
         2) Joining the layer(s) / view(s) via the 'target_join_field' and the
            'to_join_field'
+
+    NOTE:
+      This function returns a layer/view of the joined object, remember to delete
+      the joined object (arcpy.Delete_management(target_obj)) if performing
+      multiple joins in one script.
     """
 
-    print 'Starting Join_2_Objects()...'
+    print '\n    Starting Join_2_Objects()...'
 
-    # Create the layers or views using try/except
+    # Create the layer or view for the target_obj using try/except
     try:
         arcpy.MakeFeatureLayer_management(target_obj, 'target_obj')
-        print '  Made FEATURE LAYER for {}'.format(target_obj)
+        print '      Made FEATURE LAYER for: {}'.format(target_obj)
     except:
         arcpy.MakeTableView_management(target_obj, 'target_obj')
-        print '  Made TABLE VIEW for {}'.format(target_obj)
+        print '      Made TABLE VIEW for: {}'.format(target_obj)
 
+    # Create the layer or view for the to_join_obj using try/except
     try:
         arcpy.MakeFeatureLayer_management(to_join_obj, 'to_join_obj')
-        print '  Made FEATURE LAYER for {}'.format(to_join_obj)
+        print '      Made FEATURE LAYER for: {}'.format(to_join_obj)
     except:
         arcpy.MakeTableView_management(to_join_obj, 'to_join_obj')
-        print '  Made TABLE VIEW for {}'.format(to_join_obj)
+        print '      Made TABLE VIEW for: {}'.format(to_join_obj)
 
     # Join the layers
-    print '  Joining layers'
+    print '      Joining "{}"\n         With "{}"\n           On "{}"\n         Type "{}"\n'.format(target_obj, to_join_obj, to_join_field, join_type)
     arcpy.AddJoin_management('target_obj', target_join_field, 'to_join_obj', to_join_field, join_type)
 
-    # Print the fields
-    fields = arcpy.ListFields('target_obj')
-    print '  Fields in joined layer:'
-    for field in fields:
-        print '    ' + field.name
+    # Print the fields (only really needed during testing)
+    ##fields = arcpy.ListFields('target_obj')
+    ##print '  Fields in joined layer:'
+    ##for field in fields:
+    ##    print '    ' + field.name
 
-    print 'Finished Join_2_Objects()...\n'
+    print '    Finished Join_2_Objects()\n'
 
     # Return the layer/view of the joined object so it can be processed
     return 'target_obj'
@@ -899,6 +906,11 @@ def Update_Cursor_Func(fc_or_table, field_to_update, id_field, where_clause, val
       (unlike the arcpy.da.UpdateCursor which requires an edit session), the
       arcpy.UpdateCursor is slower and older.
       It is at risk to be discontinued at some point in the future.
+
+    CREATED:
+      8/8/2017--Mike Grue
+    EDITED:
+      8/8/2017--Mike Grue
     """
 
     import arcpy
@@ -937,6 +949,60 @@ def Update_Cursor_Func(fc_or_table, field_to_update, id_field, where_clause, val
     print '\nFinished Update_Cursor_Func()'
 
     return
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#                         FUNCTION: Update_Fields()
+
+def Update_Fields(target_obj, join_field, obj_to_join, fields_to_update):
+    """
+    PARAMETERS:
+      target_obj (str): The full path of the FC/Table to be updated.
+
+      join_field (str): The name of the field used to join the two objects.
+
+      obj_to_join (str): The full path of the FC/Table used to update.
+
+      fields_to_update (list): List of the field names that will be updated.
+        Field names must match between the target_obj and the obj_to_join
+
+    RETURNS:
+      none
+
+    FUNCTION:
+      To calculate the fields in 'fields_to_update' list from the obj_to_join
+      to the target_obj
+
+    NOTE:
+      This Function needs access to Join_2_Objects() function in order to work.
+    """
+
+    print 'Starting Update_Fields()...'
+
+    joined_obj = Join_2_Objects(target_obj, join_field, obj_to_join, join_field, 'KEEP_COMMON')
+
+    # Get the basename of the imported table, i.e. "CIP_5YEAR_POLY_2017_5_15__9_38_50"
+    # Will be used in 'expression' below
+    obj_to_join_name = os.path.basename(obj_to_join)
+
+    # Get the basename of the target_obj i.e. 'CIP_5YEAR_POLY'
+    # Will be used in the 'where_clause' and 'SearchCursor' below
+    target_obj_name = os.path.basename(target_obj)
+
+    for field in fields_to_update:
+
+        field_to_calc = '{}.{}'.format(target_obj_name, field)
+        expression    = '!{}.{}!'.format(obj_to_join_name, field)
+
+        print '  In joined_fc, calculating field: "{}", to equal: "{}"'.format(field_to_calc, expression)
+        arcpy.CalculateField_management(joined_obj, field_to_calc, expression, 'PYTHON_9.3')
+
+    # Delete the layer/view between the SDW FC and the imported table so there
+    #   is no 'holdover' when creating the next joined layer/view
+    print '\n  Deleting layer/view with the join'
+    arcpy.Delete_management(joined_obj)
+
+    print 'Finished Updating Fields\n'
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
