@@ -1,5 +1,81 @@
 import os, arcpy, datetime
-##arcpy.env.overwriteOutput = True
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#                                 FUNCTION Attach_File_to_Email
+def Attach_File_To_Email(file_to_attach):
+    """
+    PARAMETERS:
+      file_to_attach (str): Full path to an item to attach to an email.
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      To attach a file (Excel, Word) to an email.
+
+    NOTE:
+      This function is NOT CURRENTLY WORKING.  It simply contains the logic that
+      has been used in the past to attach Excel files to emails.
+    """
+### Import emailing modules
+##from email.mime.multipart import MIMEMultipart
+##from email.mime.application import MIMEApplication
+##from email import encoders
+##from email.message import Message
+##from email.mime.text import MIMEText
+
+##    msg = MIMEMultipart()
+##    msg['Subject']   = subj
+##    msg['From']      = "Python Script"
+##    msg['To']        = ', '.join(email_list)  # Join each item in list with a ', '
+##    msg.attach(MIMEText(body, 'html'))
+
+##    # Set the attachment if needed
+##    if (attach_excel_report == True):
+##        attachment = MIMEApplication(open(file_to_attach, 'rb').read())
+##
+##        # Get name for attachment, which should equal the name of the file_to_attach
+##        file_name = os.path.split(file_to_attach)[1]
+##
+##        # Set attachment into msg
+##        attachment['Content-Disposition'] = 'attachment; filename = "{}"'.format(file_name)
+##        msg.attach(attachment)
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#                        FUNCTION:  APPEND DATA
+
+def Append_Data(input_item, target, schema_type, field_mapping=None):
+    """
+    PARAMETERS:
+      input_item (str) = Full path to the item to append.
+      target (str) = Full path to the item that will be updated.
+      schema_type (str) = Controls if a schema test will take place.
+      field_mapping {arcpy.FieldMappings obj} = Arcpy Field Mapping object.
+        Optional.
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      To append the data from the input_item to the target using an
+      optional arcpy field_mapping object to override the default field mapping.
+    """
+
+    print '--------------------------------------------------------------------'
+    print 'Appending Data...'
+    print '  From: {}'.format(input_item)
+    print '  To:   {}'.format(target)
+
+    # If there is a field mapping object, make sure there is no schema test
+    if field_mapping <> None:
+        schema_type = 'NO_TEST'
+
+    # Process
+    arcpy.Append_management(input_item, target, schema_type, field_mapping)
+
+    print 'Successfully appended data.\n'
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
