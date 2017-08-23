@@ -492,6 +492,99 @@ def Export_To_Excel(wkg_folder, wkg_FGDB, table_to_export, export_folder, dt_to_
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
+#                             FUNCTION Get_AGOL_Data()
+def Get_AGOL_Data(AGOL_fields, token, query_url, where_clause, wkg_folder, wkg_FGDB, orig_FC):
+    """
+    PARAMETERS:
+      AGOL_fields (str) = The fields we want to have the server return from our query.
+        use the string ('*') to return all fields.
+      token (str) = The token obtained by the Get_Token() which gives access to
+        AGOL databases that we have permission to access.
+      query_url (str) = The URL address for the feature service that allows us
+        to query the database.
+        Should be the service URL on AGOL (up to the '/FeatureServer' part
+        plus the string '/0/query'.
+      where_clause (str) = The where clause to add to the query to receive a
+        subset of the full dataset.
+      wkg_folder (str) = Full path to the 'Data' folder that contains the FGDB's,
+        Excel files, Logs, and Pictures.
+      wkg_FGDB (str) = Name of the working FGDB in the wkgFolder.
+      orig_FC (str) = Name of the FC that will hold the original data downloaded
+        by this function.  This FC gets overwritten every time the script is run.
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      To download data from AGOL.  This function, establishs a connection to the
+      data, creates a FGDB (if needed), creates a FC (or overwrites the existing
+      one to store the data, and then copies the data from AGOL to the FC.
+
+    NOTE:
+      Need to have obtained a token from the Get_Token() function.
+    """
+
+    print 'Starting Get_AGOL_Data()'
+
+    # Encode the where_clause so it is readable by URL protocol (ie %27 = ' in URL).
+    # visit http://meyerweb.com/eric/tools/dencoder to test URL encoding.
+    # If you suspect the where clause is causing the problems, uncomment the
+    #   below 'where = "1=1"' clause.
+    ##where_clause = "1=1"  # For testing purposes
+    print '  Getting data where: {}'.format(where_clause)
+    where_encoded = urllib.quote(where_clause)
+    query = "?where={}&outFields={}&returnGeometry=true&f=json&token={}".format(where_encoded, AGOL_fields, token)
+    fsURL = query_url + query
+
+    # Create empty Feature Set object
+    fs = arcpy.FeatureSet()
+
+    #---------------------------------------------------------------------------
+    #                 Try to load data into Feature Set object
+    # This try/except is because the fs.load(fsURL) will fail whenever no data
+    # is returned by the query.
+    try:
+        ##print 'fsURL %s' % fsURL  # For testing purposes
+        fs.load(fsURL)
+    except:
+        print '  "fs.load(fsURL)" yielded no data at fsURL.'
+        print '  Query may not have yielded any records.'
+        print '  Could simply mean there was no data satisfied by the query.'
+        print '  Or could be another problem with the Get_AGOL_Data() function.'
+        print '  Feature Service: %s' % str(fsURL)
+
+        # If no data downloaded, stop the function here
+        print '\n  * WARNING, no data downloaded *'
+        print 'Finished Get_AGOL_Data()'
+        return
+
+    #---------------------------------------------------------------------------
+    #             Data was loaded, CONTINUE the downloading process
+
+    #Create working FGDB if it does not already exist. Leave alone if it does...
+    FGDB_path = wkg_folder + '\\' + wkg_FGDB
+    if not os.path.exists(FGDB_path):
+        print '  Creating FGDB: %s at: %s' % (wkg_FGDB, wkg_folder)
+
+        # Process
+        arcpy.CreateFileGDB_management(wkg_folder,wkg_FGDB)
+
+    #---------------------------------------------------------------------------
+    #Copy the features to the FGDB.
+    orig_path = wkg_folder + "\\" + wkg_FGDB + '\\' + orig_FC
+    print '  Copying AGOL database features to: %s' % orig_path
+
+    # Process
+    arcpy.CopyFeatures_management(fs,orig_path)
+
+    #---------------------------------------------------------------------------
+    print "  Successfully retrieved data.\n"
+    print 'Finished Get_AGOL_Data()'
+
+    return
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 #                        FUNCTION Get_Count_Selected()
 def Get_Count_Selected(lyr):
     """
@@ -569,7 +662,7 @@ def Get_DT_To_Append():
       none
 
     RETURNS:
-      dt_to_append (str): Which is in the format 'YYYY_M_D__H_M_S'
+      dt_to_append (str): Which is in the format 'YYYY_MM_DD__HH_MM_SS'
 
     FUNCTION:
       To get a formatted datetime string that can be used to append to files
@@ -579,8 +672,8 @@ def Get_DT_To_Append():
 
     start_time = datetime.datetime.now()
 
-    date = '%s_%s_%s' % (start_time.year, start_time.month, start_time.day)
-    time = '%s_%s_%s' % (start_time.hour, start_time.minute, start_time.second)
+    date = start_time.strftime('%Y_%m_%d')
+    time = start_time.strftime('%H_%M_%S')
 
     dt_to_append = '%s__%s' % (date, time)
 
@@ -644,6 +737,65 @@ def Get_List_Of_Parcels(rmaTrack, parcel_fc, roadBufferVal):
 
 
             print ''
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#                       FUNCTION:    Get AGOL token
+
+def Get_Token(cfgFile, gtURL):
+    """
+    PARAMETERS:
+      cfgFile (str):
+        Path to the .txt file that holds the user name and password of the
+        account used to access the data.  This account must be in a group
+        that has access to the online database.
+      gtURL (str): URL where ArcGIS generates tokens.
+
+    VARS:
+      token (str):
+        a string 'password' from ArcGIS that will allow us to to access the
+        online database.
+
+    RETURNS:
+      token (str): A long string that acts as an access code to AGOL servers.
+        Used in later functions to gain access to our data.
+
+    FUNCTION: Gets a token from AGOL that allows access to the AGOL data.
+    """
+
+    print '--------------------------------------------------------------------'
+    print "Getting Token..."
+
+    import ConfigParser, urllib, urllib2, json
+
+    # Get the user name and password from the cfgFile
+    configRMA = ConfigParser.ConfigParser()
+    configRMA.read(cfgFile)
+    usr = configRMA.get("AGOL","usr")
+    pwd = configRMA.get("AGOL","pwd")
+
+    # Create a dictionary of the user name, password, and 2 other keys
+    gtValues = {'username' : usr, 'password' : pwd, 'referer' : 'http://www.arcgis.com', 'f' : 'json' }
+
+    # Encode the dictionary so they are in URL format
+    gtData = urllib.urlencode(gtValues)
+
+    # Create a request object with the URL adn the URL formatted dictionary
+    gtRequest = urllib2.Request(gtURL,gtData)
+
+    # Store the response to the request
+    gtResponse = urllib2.urlopen(gtRequest)
+
+    # Store the response as a json object
+    gtJson = json.load(gtResponse)
+
+    # Store the token from the json object
+    token = gtJson['token']
+    ##print token  # For testing purposes
+
+    print "Successfully retrieved token.\n"
+
+    return token
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
