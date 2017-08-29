@@ -297,8 +297,70 @@ def DPW_WP_SITES_To_Survey123_csv(Sites_Export_To_CSV_tbl, DPW_WP_SITES, Site_In
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
-#                       FUNCTION Email()
-def Email(email_subject, email_recipients, email_login_info, log_file=None):
+#                               Function Email_W_Body()
+def Email_W_Body(subj, body, email_list, cfgFile=
+    r"P:\DPW_ScienceAndMonitoring\Scripts\DEV\DEV_branch\Control_Files\accounts.txt"):
+
+    """
+    PARAMETERS:
+      subj (str): Subject of the email
+      body (str): Body of the email in HTML.  Can be a simple string, but you
+        can use HTML markup like <b>bold</b>, <i>italic</i>, <br>carriage return
+        <h1>Header 1</h1>, etc.
+      email_list (str): List of strings that contains the email addresses to
+        send the email to.
+      cfgFile {str}: Path to a config file with username and password.
+        The format of the config file should be as below with
+        <username> and <password> completed:
+
+          [email]
+          usr: <username>
+          pwd: <password>
+
+        OPTIONAL. A default will be used if one isn't given.
+
+    RETURNS:
+      None
+
+    FUNCTION: To send an email to the listed recipients.
+      If you want to provide a log file to include in the body of the email,
+      please use function Email_w_LogFile()
+    """
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    import ConfigParser, smtplib
+
+    print 'Starting Email_W_Body()'
+
+    # Set the subj, From, To, and body
+    msg = MIMEMultipart()
+    msg['Subject']   = subj
+    msg['From']      = "Python Script"
+    msg['To']        = ', '.join(email_list)  # Join each item in list with a ', '
+    msg.attach(MIMEText(body, 'html'))
+
+    # Get username and password from cfgFile
+    config = ConfigParser.ConfigParser()
+    config.read(cfgFile)
+    email_usr = config.get('email', 'usr')
+    email_pwd = config.get('email', 'pwd')
+
+    # Send the email
+    ##print '  Sending the email to:  {}'.format(', '.join(email_list))
+    SMTP_obj = smtplib.SMTP('smtp.gmail.com',587)
+    SMTP_obj.starttls()
+    SMTP_obj.login(email_usr, email_pwd)
+    SMTP_obj.sendmail(email_usr, email_list, msg.as_string())
+    SMTP_obj.quit()
+    time.sleep(2)
+
+    print 'Successfully emailed results.'
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#                       FUNCTION Email_W_LogFile()
+def Email_W_LogFile(email_subject, email_recipients, email_login_info, log_file=None):
     """
     PARAMETERS:
       email_subject (str): The subject line for the email
