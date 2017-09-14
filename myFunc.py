@@ -555,7 +555,7 @@ def Export_To_Excel(wkg_folder, wkg_FGDB, table_to_export, export_folder, dt_to_
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
 #                             FUNCTION Get_AGOL_Data_All()
-def Get_AGOL_Data_All(AGOL_fields, token, FS_url, index_of_layer, wkg_folder, wkg_FGDB, orig_FC):
+def Get_AGOL_Data_All(AGOL_fields, token, FS_url, index_of_layer, wkg_folder, wkg_FGDB, FC_name):
     """
     PARAMETERS:
       AGOL_fields (str) = The fields we want to have the server return from our query.
@@ -567,11 +567,12 @@ def Get_AGOL_Data_All(AGOL_fields, token, FS_url, index_of_layer, wkg_folder, wk
       index_of_layer (int)= The index of the specific layer in the FS to download.
         i.e. 0 if it is the first layer in the FS, 1 if it is the second layer, etc.
       wkg_folder (str) = Full path to the folder that contains the FGDB that you
-        want to download the data into.  FGDB must already exist.
-      wkg_FGDB (str) = Name of the working FGDB in the wkg_folder.
-      orig_FC (str) = The name of the FC that will be created to hold the data
+        want to download the data into.  Folder must already exist.
+      wkg_FGDB (str) = Name of the working FGDB in the wkg_folder.  FGDB must
+        already exist.
+      FC_name (str) = The name of the FC that will be created to hold the data
         downloaded by this function.  This FC gets overwritten every time the
-        script is run.
+        script is run.  FC does NOT need to already exist.
 
     RETURNS:
       None
@@ -594,6 +595,8 @@ def Get_AGOL_Data_All(AGOL_fields, token, FS_url, index_of_layer, wkg_folder, wk
     print '--------------------------------------------------------------------'
     print 'Starting Get_AGOL_Data_All()'
 
+    import urllib2, json, urllib
+
     # Set URLs
     query_url = FS_url + '/{}/query'.format(index_of_layer)
     print '  Downloading all data found at: {}/{}\n'.format(FS_url, index_of_layer)
@@ -613,6 +616,7 @@ def Get_AGOL_Data_All(AGOL_fields, token, FS_url, index_of_layer, wkg_folder, wk
     except:
         print 'ERROR!'
         print obj_count_json['error']['message']
+
     num_object_ids = len(object_ids)
     print '  Number of records in FS layer: {}'.format(num_object_ids)
 
@@ -674,8 +678,8 @@ def Get_AGOL_Data_All(AGOL_fields, token, FS_url, index_of_layer, wkg_folder, wk
         #-----------------------------------------------------------------------
         # Process d/l data
 
-        if first_iteration == True:  # Then this is the first run and d/l data to the orig_FC
-            path = wkg_folder + "\\" + wkg_FGDB + '\\' + orig_FC
+        if first_iteration == True:  # Then this is the first run and d/l data to the FC_name
+            path = wkg_folder + "\\" + wkg_FGDB + '\\' + FC_name
         else:
             path = wkg_folder + "\\" + wkg_FGDB + '\\temp_to_append'
 
@@ -683,9 +687,9 @@ def Get_AGOL_Data_All(AGOL_fields, token, FS_url, index_of_layer, wkg_folder, wk
         print '    Copying AGOL database features to: %s' % path
         arcpy.CopyFeatures_management(fs,path)
 
-        # If this is a subsequent run then append the newly d/l data to the orig_FC
+        # If this is a subsequent run then append the newly d/l data to the FC_name
         if first_iteration == False:
-            orig_path = wkg_folder + "\\" + wkg_FGDB + '\\' + orig_FC
+            orig_path = wkg_folder + "\\" + wkg_FGDB + '\\' + FC_name
             print '    Appending:\n      {}\n      To:\n      {}'.format(path, orig_path)
             arcpy.Append_management(path, orig_path, 'NO_TEST')
 
