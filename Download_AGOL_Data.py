@@ -2,7 +2,15 @@
 # Name:        Download_AGOL_Data.py
 # Purpose:
 """
-
+To download data from an AGOL Feature Service.  This script will download all
+of the data in the FS regardless of the size of the data or the number of
+features returned by the server.
+Set:
+  The Feature Service URL that ends in .../FeatureServer
+  Index that the layer is at in the FS (Usually 0)
+  Folder you want the data downloaded to
+  Name of the existing FGDB to download (in the Folder set above)
+  Name you want to give to the FC
 """
 #
 # Author:      mgrue
