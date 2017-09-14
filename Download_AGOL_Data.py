@@ -13,20 +13,25 @@
 #-------------------------------------------------------------------------------
 
 import arcpy
+arcpy.env.overwriteOutput = True
 
 def main():
 
     #---------------------------------------------------------------------------
-    #                          Set Variables
-    cfgFile = r"P:\DPW_ScienceAndMonitoring\Scripts\DEV\DEV_branch\Control_Files\accounts.txt"
-
-    AGOL_fields    = '*'
+    #                     Set Variables that will change
     FS_url         = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/arcgis/rest/services/Testing_Domains_EditorTracking/FeatureServer'
     index_of_layer = 0
     wkg_folder     = r'P:\DPW_ScienceAndMonitoring\Working\Test'
     wkg_FGDB       = 'Testing.gdb'
     FC_name        = 'Testing_Domain'
 
+    #---------------------------------------------------------------------------
+    #                     Set Variables that will probably not change
+    cfgFile = r"P:\DPW_ScienceAndMonitoring\Scripts\DEV\DEV_branch\Control_Files\accounts.txt"
+    AGOL_fields    = '*'
+
+    #---------------------------------------------------------------------------
+    #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     #---------------------------------------------------------------------------
     #                          Start Calling Functions
 
