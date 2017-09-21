@@ -27,7 +27,7 @@ def main():
 
     #---------------------------------------------------------------------------
     #                     Set Variables that will change
-    FS_url         = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/arcgis/rest/services/Testing_Domains_EditorTracking/FeatureServer'
+    FS_url         = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/arcgis/rest/services/DPW_WP_SITES_DEV_2/FeatureServer'
     index_of_layer = 0
     wkg_folder     = r'P:\DPW_ScienceAndMonitoring\Working\Test'
     wkg_FGDB       = 'Testing.gdb'
