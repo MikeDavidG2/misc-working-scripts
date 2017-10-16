@@ -79,6 +79,52 @@ def Append_Data(input_item, target, schema_type, field_mapping=None):
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
+def Copy_Directory(src, dest):
+    """
+    PARAMETERS:
+      src (str): Path to a folder that you want to create a copy of (including
+        the files and folder structure).
+      dest (str): Path to a folder that will contain the copied folder from
+        'src' above.
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      To create a copy of a folder from the 'src' to the 'dest' folder.  The
+        The copied folder (along with all the files and folder structure) will
+        be copied to the 'dest' folder.  The new folder will be given the name
+        of the 'src' folder with the 'YYYY_MM_DD__HH_MM_SS' appended to it.
+
+    NOTE:
+      This function assumes that the Get_DT_To_Append() is available to use.
+    """
+
+    import errno, shutil
+    print '\n------------------------------------------------------------------'
+    print 'Starting Copy_Directory()'
+
+    name_of_backup = os.path.basename(src)  # Get the name of the folder that is being backed up
+    dt_to_append = Get_DT_To_Append()   # Get the current date and time the folder is being backed up
+    path_and_name_of_backup = os.path.join(dest, name_of_backup + '_' + dt_to_append)
+
+    print '  Copying Directory from: "{}"'.format(src)
+    print '                      To: "{}"'.format(path_and_name_of_backup)
+
+    try:
+        shutil.copytree(src, path_and_name_of_backup, ignore=shutil.ignore_patterns('*.lock'))
+        print ' '
+    except OSError as e:
+        # If the error was caused because the source wasn't a directory
+        if e.errno == errno.ENOTDIR:
+            shutil.copy(src, path_and_name_of_backup)  # Then copy the file
+        else:
+            print('*** Directory not copied. Error: %s ***' % e)
+
+    print 'Finished Copy_Directory()'
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 #                                 FUNCTION Copy_Features()
 def Copy_Features(in_FC, out_FC):
     """
