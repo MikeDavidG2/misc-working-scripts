@@ -1,0 +1,1 @@
+in_table (Full path to the existing FC you want to add a field to),field_name,field_type,field_length,field_alias,field_domain
