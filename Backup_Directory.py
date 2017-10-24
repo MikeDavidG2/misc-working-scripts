@@ -20,31 +20,27 @@ def main():
     #                     Set Variables that will change
 
     # Name of this script
-    name_of_script = 'Backup_Folder'
+    name_of_script = 'Backup_Directory.py'
 
-    # Set the path prefix depending on if this script is called manually by a
-    #  user, or called by a scheduled task on ATLANTIC server.
-    called_by                 = arcpy.GetParameterAsText(0)
-    folder_to_backup          = arcpy.GetParameterAsText(1)
-    folder_to_contain_backups = arcpy.GetParameterAsText(2)
+    # Set the paths
+    # REMEMBER: If this script is being called by a server,
+    #  then make sure the paths below are the complete paths and are not using
+    #  any mapped drives.
+    folder_to_backup          = r''
+    folder_to_contain_backups = r''
+    log_file                  = r''
 
-    if called_by == 'MANUAL':
-        path_prefix = 'U:'
-
-    elif called_by == 'SCHEDULED':
-        path_prefix = 'D:\users'
-
-    else:  # If script run directly
-        path_prefix = 'U:'
-
-    log_file = r'{}\grue\Scripts\GitHub\Test\Logs'.format(path_prefix)
-    cfgFile = r"U:\yakos\hep_A\PROD\Environment_B\Scripts\Source_Code\config_file.ini"  # With email account info
+    cfgFile                   = r""
+    # The cfgFile is an ".ini" or ".txt" file with the below format:
+    # [email]
+    # usr: <user name>
+    # pwd: <password>
 
     # Set the variables for backing up the project folder
     days_to_backup = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     number_of_backups_allowed = 5
 
-    # Set the Email variables
+    # Set the Email list
     email_admin_ls = ['michael.grue@sdcounty.ca.gov'] #, 'randy.yakos@sdcounty.ca.gov', 'gary.ross@sdcounty.ca.gov']
 
     #---------------------------------------------------------------------------
@@ -67,8 +63,8 @@ def main():
             print '*** ERROR with Write_Print_To_Log() ***'
             print str(e)
 
-
-    # Create a backup of our data
+    #---------------------------------------------------------------------------
+    #                       Create a backup of the data
     now = datetime.datetime.now()
     day_of_week = now.strftime('%A')
 
@@ -82,33 +78,42 @@ def main():
         # Perform the backup
         Copy_Directory(folder_to_backup, folder_to_contain_backups)
 
-    # See if we need to delete any old backups
+    #---------------------------------------------------------------------------
+    #                 See if we need to delete any old backups
     # Get a list of all the folders in the folder_to_contiain_backups that
     #   startwith the name_of_backup
-    existing_backups = [ name for name in os.listdir(folder_to_contain_backups) if (os.path.isdir(os.path.join(folder_to_contain_backups, name)) and name.startswith(name_of_backup)) ]
-    print existing_backups
-    print '  Number of existing backups: {}'.format(len(existing_backups))
+    print '\n------------------------------------------------------------------'
+    print 'Checking to see if any old existing backups need to be deleted.'
+    existing_backups = [name for name in os.listdir(folder_to_contain_backups)
+                        if (os.path.isdir(os.path.join(folder_to_contain_backups, name))
+                        and name.startswith(name_of_backup))]
 
-    if len(existing_backups) > number_of_backups_allowed:
-        num_backups_to_del = len(existing_backups) - number_of_backups_allowed
-        print '  Too many backups.  Only {} allowed.  Deleting {} backups\n'.format(number_of_backups_allowed, num_backups_to_del)
+    if len(existing_backups) > 0:
+        print '  There are "{}" existing backups:'.format(len(existing_backups))
+        for existing_backup in existing_backups:
+            print '    {}'.format(existing_backup)
 
-        count = 0
-        while count < num_backups_to_del:
-            folder_to_delete = os.path.join(folder_to_contain_backups, existing_backups[count])
-            print '  Deleting {}'.format(folder_to_delete)
-            shutil.rmtree(folder_to_delete)
-            count += 1
+        if len(existing_backups) > number_of_backups_allowed:  # Then we need to delete some backups
+            num_backups_to_del = len(existing_backups) - number_of_backups_allowed
+            print '\n  This is too many backups.  Only "{}" allowed.  Deleting "{}" backup(s).\n'.format(number_of_backups_allowed, num_backups_to_del)
 
+            count = 0
+            while count < num_backups_to_del:
+                folder_to_delete = os.path.join(folder_to_contain_backups, existing_backups[count])
+                print '  Deleting {}'.format(folder_to_delete)
+                shutil.rmtree(folder_to_delete)
+                count += 1
+
+    #---------------------------------------------------------------------------
     # Footer for log file
     finish_time_str = [datetime.datetime.now().strftime('%m/%d/%Y  %I:%M:%S %p')][0]
     print '\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++'
     print '                    {}'.format(finish_time_str)
     print '              Finished {}'.format(name_of_script)
     print '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++'
-
-    # End of script reporting
     print 'Success = {}'.format(success)
+
+    # Return print statement back to original stdout and close log file
     sys.stdout = orig_stdout
 
     # Email recipients
@@ -119,14 +124,12 @@ def main():
 
     Email_W_LogFile(email_subject, email_admin_ls, cfgFile, log_file_date)
 
+    # End of script reporting
     if success == True:
         print 'SUCCESSFULLY ran {}'.format(name_of_script)
     else:
         print '*** ERROR with {} ***'.format(name_of_script)
         print 'Please see log file (noted above) for troubleshooting\n'
-
-    if called_by == 'MANUAL':
-        raw_input('Press ENTER to continue')
 
 #-------------------------------------------------------------------------------
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -252,7 +255,6 @@ def Copy_Directory(src, dest):
 
     try:
         shutil.copytree(src, path_and_name_of_backup, ignore=shutil.ignore_patterns('*.lock'))
-        print ' '
     except OSError as e:
         # If the error was caused because the source wasn't a directory
         if e.errno == errno.ENOTDIR:
