@@ -79,6 +79,50 @@ def Append_Data(input_item, target, schema_type, field_mapping=None):
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
+#                         Function Check_For_Unique_Values
+def Check_For_Unique_Values(table, field):
+    """
+    PARAMETERS:
+      table (str): Full path to a FC or Table in a FGDB
+      field (str): Name of a field in the above 'table'
+
+    RETURNS:
+      all_unique_values {boolean): True if all the values in the specified field
+        are unique.  False if there is at least one duplicate.
+
+    FUNCTION:
+      To check a field in a table and see if there are any duplicate values in
+      that field.
+    """
+
+    print 'Starting Check_For_Unique_Values()'
+    print '  Checking field: "{}" in table: "{}"'.format(field, table)
+
+    unique_values    = []
+    duplicate_values = []
+    all_unique_values = True
+
+    with arcpy.da.SearchCursor(table, [field]) as cursor:
+        for row in cursor:
+            value = row[0]
+            if value not in unique_values:
+                unique_values.append(value)
+            else:
+                duplicate_values.append(value)
+                all_unique_values = False
+
+    if len(duplicate_values) > 0:
+        print '  There were duplicate values:'
+        for duplicate_value in duplicate_values:
+            print '    {}'.format(duplicate_value)
+
+    else:
+        print '  There were NO duplicate values'
+
+    print 'Finished Check_For_Unique_Values()\n'
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def Copy_Directory(src, dest):
     """
     PARAMETERS:
