@@ -79,12 +79,84 @@ def Append_Data(input_item, target, schema_type, field_mapping=None):
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
+#                       Function Check_For_Missing_Values()
+def Check_For_Missing_Values(target_table, table_to_check, target_field, check_field, email_list, cfgFile):
+    """
+    PARAMETERS:
+      target_table (str): Table to get the values to check.
+      table_to_check (str): Table to perform the check on.
+      target_field (str): Name of the field in the target_table to check.
+      check_field (str): Name of the field in the table_to_check to perform the
+        check on.
+      email_list(str): List of email addresses
+      cfgFile (str): Path to a config file (.txt or .ini) with format:
+        [email]
+        usr: <username>
+        pwd: <password>
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      To check for any missing values from one field in one table when compared
+      to a target table/field.  Sends an email if there are missing values
+      in the table_to_check.
+    """
+    print 'Starting Check_For_Missing_Values()'
+    print '  Target Table   = {}'.format(target_table)
+    print '  Table To Check = {}'.format(table_to_check)
+    print '  Target Field   = {}'.format(target_field)
+    print '  Check Field    = {}'.format(check_field)
+
+    print '  Getting list of unique values in the Target Table'
+    unique_values = []
+    with arcpy.da.SearchCursor(target_table, [target_field]) as target_cursor:
+        for row in target_cursor:
+            value = row[0]
+            if value not in unique_values:
+                unique_values.append(value)
+
+    print '  Getting list of values in Target Table that are not in Table To Check'
+    missing_values = []
+    with arcpy.da.SearchCursor(table_to_check, [check_field]) as check_cursor:
+        for row in check_cursor:
+            value = row[0]
+            if value not in unique_values:
+                missing_values.append(str(value))
+
+    if len(missing_values) > 0:
+        print '  There were values in Target Table field: "{}" that are not in Table To Check field: "{}"'.format(target_field, check_field)
+        for m_val in missing_values:
+            print '    {}'.format(m_val)
+
+        missing_values_str = '<br>'.join(missing_values)
+
+        subj = 'WARNING!  There were missing values in {}.'.format(check_field)
+        body = """<enter body in HTML format here>
+        """.format()
+
+        Email_W_Body(subj, body, email_list, cfgFile)
+
+    else:
+        print '  There were NO missing values in the Table To Check'
+
+    print 'Finished Check_For_Missing_Values()\n'
+
+    return
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 #                         Function Check_For_Unique_Values
 def Check_For_Unique_Values(table, field):
     """
     PARAMETERS:
       table (str): Full path to a FC or Table in a FGDB
       field (str): Name of a field in the above 'table'
+      email_list(str): List of email addresses
+      cfgFile (str): Path to a config file (.txt or .ini) with format:
+        [email]
+        usr: <username>
+        pwd: <password>
 
     RETURNS:
       all_unique_values {boolean): True if all the values in the specified field
@@ -120,6 +192,8 @@ def Check_For_Unique_Values(table, field):
         print '  There were NO duplicate values'
 
     print 'Finished Check_For_Unique_Values()\n'
+
+    return all_unique_values
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -494,7 +568,7 @@ def Email_W_Body(subj, body, email_list, cfgFile=
     SMTP_obj.quit()
     time.sleep(2)
 
-    print 'Successfully emailed results.'
+    print 'Finished Email_W_Body().'
 
 
 #-------------------------------------------------------------------------------
