@@ -80,7 +80,7 @@ def Append_Data(input_item, target, schema_type, field_mapping=None):
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
 #                       Function Check_For_Missing_Values()
-def Check_For_Missing_Values(target_table, table_to_check, target_field, check_field, email_list, cfgFile):
+def Check_For_Missing_Values(target_table, table_to_check, target_field, check_field, values_to_ignore, email_list, cfgFile):
     """
     PARAMETERS:
       target_table (str): Table to get the values to check.
@@ -88,6 +88,11 @@ def Check_For_Missing_Values(target_table, table_to_check, target_field, check_f
       target_field (str): Name of the field in the target_table to check.
       check_field (str): Name of the field in the table_to_check to perform the
         check on.
+      values_to_ignore (str): List of Site Numbers in the Visits database
+        that we should ignore in this function.  We would
+        ignore these sites because there could be Visits to sites in the past
+        for sites that were later deleted in the Sites database (and we do not
+        want to get Warning emails for these).
       email_list(str): List of email addresses
       cfgFile (str): Path to a config file (.txt or .ini) with format:
         [email]
@@ -107,42 +112,61 @@ def Check_For_Missing_Values(target_table, table_to_check, target_field, check_f
     print '  Table To Check = {}'.format(table_to_check)
     print '  Target Field   = {}'.format(target_field)
     print '  Check Field    = {}'.format(check_field)
+    if len(values_to_ignore) > 0:
+        print '  Site Numbers in the Visit database to ignore:'
+        for num in values_to_ignore:
+            print '    {}'.format(str(num))
+    print ''
 
-    print '  Getting list of unique values in the Target Table'
+    # Get list of unique values in the Table To Check
+    print '  Getting list of unique values in the Table To Check'
     unique_values = []
-    with arcpy.da.SearchCursor(target_table, [target_field]) as target_cursor:
-        for row in target_cursor:
-            value = row[0]
-            if value not in unique_values:
-                unique_values.append(value)
-
-    print '  Getting list of values in Target Table that are not in Table To Check'
-    missing_values = []
     with arcpy.da.SearchCursor(table_to_check, [check_field]) as check_cursor:
         for row in check_cursor:
             value = row[0]
             if value not in unique_values:
+                unique_values.append(value)
+
+    del row, check_cursor
+    unique_values.sort()
+    ##print unique_values
+
+    # Get list of values that ARE in Target Table that are NOT in Table To Check
+    print '  Getting list of values in Target Table that are not in Table To Check'
+    missing_values = []
+    with arcpy.da.SearchCursor(target_table, [target_field]) as target_cursor:
+        for row in target_cursor:
+            value = row[0]
+            if (value not in unique_values) and (value not in values_to_ignore) and (str(value) not in missing_values):
                 missing_values.append(str(value))
 
-    if len(missing_values) > 0:
-        print '  There were values in Target Table field: "{}" that are not in Table To Check field: "{}"'.format(target_field, check_field)
+    del row, target_cursor
+    missing_values.sort()
+    ##print missing_values
+
+    if len(missing_values) > 0:  # Then there were missing values
+        print '  There were values in Target Table that are not in Table To Check'
         for m_val in missing_values:
             print '    {}'.format(m_val)
+
+        print '\n  Sending Warning Email...\n'
 
         missing_values_str = '<br>'.join(missing_values)
 
         subj = 'WARNING!  There were missing values in {}.'.format(check_field)
-        body = """<enter body in HTML format here>
-        """.format()
+        body = """<enter warning in HTML format here>
+        """.format(check_field, os.path.basename(table_to_check), missing_values_str)
 
         Email_W_Body(subj, body, email_list, cfgFile)
 
     else:
-        print '  There were NO missing values in the Table To Check'
+        print '  There were NO missing values in the Table To Check.  No Warning email needed.'
 
-    print 'Finished Check_For_Missing_Values()\n'
+    print 'Finished Check_For_Missing_Values()'
+    print '------------------------------------------------------------------\n'
 
     return
+
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
