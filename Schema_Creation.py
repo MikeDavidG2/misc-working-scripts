@@ -1,6 +1,7 @@
 #-------------------------------------------------------------------------------
-# Name:        module1
-# Purpose:
+# Name:        Schema_Creation.py
+# Purpose:     To create a schema using a CSV file.  You can find a TEMPLATE of
+# The CSV file at U:\grue\Scripts\GitHub\Misc_Working_Scripts\Schema_Creation_Template.csv
 #
 # Author:      mgrue
 #
@@ -10,8 +11,13 @@
 #-------------------------------------------------------------------------------
 import csv, arcpy, time
 def main():
+
+    # Set Only Variable you should need to change
     csv_with_schema = r"U:\yakos\hep_A\TEST\Sites_Schema_Collector.csv"
 
+
+    #---------------------------------------------------------------------------
+    # Run script
     added_fields = 0
 
     with open (csv_with_schema) as csv_file:
