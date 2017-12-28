@@ -1,6 +1,12 @@
 #-------------------------------------------------------------------------------
-# Name:        module1
+# Name:        Search_FeatureClasses.py
 # Purpose:
+"""
+Set the 'workspace', 'prefix' and 'wild_card' variables to search for layers
+in the workspace database.
+
+Can be used to generate CSV lists of all the objects in an SDE
+"""
 #
 # Author:      mgrue
 #
@@ -16,12 +22,12 @@ def main():
     #                              Set variables
 
     # Change workspace to database you want to list FC's
-    ##workspace = 'Database Connections\AD@ATLANTIC@SDW.sde'
-    workspace = 'Database Connections\AD@ATLANTIC@SDE.sde'
+    workspace = 'Database Connections\AD@ATLANTIC@SDW.sde'
+    ##workspace = 'Database Connections\AD@ATLANTIC@SDE.sde'
 
     # Change to the prefix that is at the beginning of each FC to list
-    ##prefix    = 'SDW.PDS.'
-    prefix    = 'SDE.SANGIS.'
+    prefix    = 'SDW.PDS.'
+    ##prefix    = 'SDE.SANGIS.'
 
     # Set wildcard to limit searches in the name of the FC
     wild_card = '*'
@@ -31,13 +37,20 @@ def main():
     arcpy.env.workspace = workspace
 
     # Get lists
+    print 'Getting List of Datasets'
     datasets = arcpy.ListDatasets(prefix + wild_card)
+
+    print 'Getting list of Feature Classes'
     fcs      = arcpy.ListFeatureClasses(prefix + wild_card)
+
+    print 'Getting lists of Tables'
     tables   = arcpy.ListTables(prefix + wild_card)
+
 
     # Sort lists
     datasets.sort()
     fcs.sort()
+
 
     # Print list of FC's that are in a Dataset
     print 'Datasets: '
