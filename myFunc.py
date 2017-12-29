@@ -120,6 +120,135 @@ def AGOL_Get_Object_Ids_Where(name_of_FS, index_of_layer_in_FS, where_clause, to
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
+#                FUNCTION:    Update AGOL Features
+
+def AGOL_Update_Features(name_of_FS, index_of_layer_in_FS, object_id, field_to_update, new_value, token):
+    """
+    PARAMETERS:
+      name_of_FS (str): The name of the Feature Service (do not include things
+        like "services1.arcgis.com/1vIhDJwtG5eNmiqX/ArcGIS/rest/services", just
+        the name is needed.  i.e. "DPW_WP_SITES_DEV_VIEW".
+      index_of_layer_in_FS (int): The index of the layer in the Feature Service.
+        This will frequently be 0, but it could be a higer number if the FS has
+        multiple layers in it.
+      object_id (str or int): OBJECTID that should be updated.
+      field_to_update (str): Field in the FS that should be updated.
+      new_value (str or int): New value that should go into the field.  Data
+        type depends on the data type of the field.
+      token (str): Token from AGOL that gives permission to interact with
+        data stored on AGOL servers.  Obtained from the Get_Token().
+
+    RETURNS:
+      success (boolean): 'True' if there were no errors.  'False' if there were.
+
+    FUNCTION:
+      To Update features on an AGOL Feature Service.
+    """
+
+    print '--------------------------------------------------------------------'
+    print "Starting AGOL_Update_Features()"
+    import urllib2, urllib, json
+
+    success = True
+
+    # Set the json upate
+    features_json = {"attributes" : {"objectid" : object_id, "{}".format(field_to_update) : "{}".format(new_value)}}
+    ##print 'features_json:  {}'.format(features_json)
+
+    # Set URLs
+    update_url       = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/ArcGIS/rest/services/{}/FeatureServer/{}/updateFeatures?token={}'.format(name_of_FS, index_of_layer_in_FS, token)
+    update_params    = urllib.urlencode({'Features': features_json, 'f':'json'})
+
+
+    # Update the features
+    print '  Updating Features in FS: {}'.format(name_of_FS)
+    print '                 At index: {}'.format(index_of_layer_in_FS)
+    print '   OBJECTID to be updated: {}'.format(object_id)
+    print '      Field to be updated: {}'.format(field_to_update)
+    print '   New value for updt fld: {}'.format(new_value)
+
+    ##print update_url + update_params
+    response  = urllib2.urlopen(update_url, update_params)
+    response_json_obj = json.load(response)
+    ##print response_json_obj
+
+    for result in response_json_obj['updateResults']:
+        ##print result
+        print '    OBJECTID: {}'.format(result['objectId'])
+        print '      Updated? {}'.format(result['success'])
+        if result['success'] != 'True':
+            success = False
+
+    print 'Finished AGOL_Update_Features()\n'
+    return success
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#                       FUNCTION:    Get AGOL token
+def AGOL_Get_Token(cfgFile, gtURL="https://www.arcgis.com/sharing/rest/generateToken"):
+    """
+    PARAMETERS:
+      cfgFile (str):
+        Path to the .txt file that holds the user name and password of the
+        account used to access the data.  This account must be in a group
+        that has access to the online database.
+        The format of the config file should be as below with
+        <username> and <password> completed:
+
+          [AGOL]
+          usr: <username>
+          pwd: <password>
+
+      gtURL {str}: URL where ArcGIS generates tokens. OPTIONAL.
+
+    VARS:
+      token (str):
+        a string 'password' from ArcGIS that will allow us to to access the
+        online database.
+
+    RETURNS:
+      token (str): A long string that acts as an access code to AGOL servers.
+        Used in later functions to gain access to our data.
+
+    FUNCTION: Gets a token from AGOL that allows access to the AGOL data.
+    """
+
+    print '--------------------------------------------------------------------'
+    print "Getting Token..."
+
+    import ConfigParser, urllib, urllib2, json
+
+    # Get the user name and password from the cfgFile
+    configRMA = ConfigParser.ConfigParser()
+    configRMA.read(cfgFile)
+    usr = configRMA.get("AGOL","usr")
+    pwd = configRMA.get("AGOL","pwd")
+
+    # Create a dictionary of the user name, password, and 2 other keys
+    gtValues = {'username' : usr, 'password' : pwd, 'referer' : 'http://www.arcgis.com', 'f' : 'json' }
+
+    # Encode the dictionary so they are in URL format
+    gtData = urllib.urlencode(gtValues)
+
+    # Create a request object with the URL adn the URL formatted dictionary
+    gtRequest = urllib2.Request(gtURL,gtData)
+
+    # Store the response to the request
+    gtResponse = urllib2.urlopen(gtRequest)
+
+    # Store the response as a json object
+    gtJson = json.load(gtResponse)
+
+    # Store the token from the json object
+    token = gtJson['token']
+    ##print token  # For testing purposes
+
+    print "Successfully retrieved token.\n"
+
+    return token
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 #                                 FUNCTION Attach_File_to_Email
 def Attach_File_To_Email(file_to_attach):
     """
