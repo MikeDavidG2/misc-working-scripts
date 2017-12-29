@@ -1,10 +1,15 @@
 #-------------------------------------------------------------------------------
+# Name:        Download_AGOL_Data_OLD.py
 # Purpose:
 """
+
+This is an old version of the script, it is more simple than the replacement
+script (Download_AGOL_Data.py).
+
 To download data from an AGOL Feature Service.  This script will download all
 of the data in the FS regardless of the size of the data or the number of
 features returned by the server.
-Users Set:
+Set:
   The Feature Service URL that ends in .../FeatureServer
   Index that the layer is at in the FS (Usually 0)
   Folder you want the data downloaded to
@@ -14,252 +19,45 @@ Users Set:
 #
 # Author:      mgrue
 #
-# Created:     10/11/2017
+# Created:     14/09/2017
 # Copyright:   (c) mgrue 2017
 # Licence:     <your licence>
 #-------------------------------------------------------------------------------
 
-# TODO: When I'm done writing/testing this script, this should be used to replace my current Download_AGOL_Data.py.
-# TODO: Update the script Purpose above to be more accurate.
-
-import arcpy, sys, datetime, os, ConfigParser
+import arcpy
 arcpy.env.overwriteOutput = True
 
 def main():
 
     #---------------------------------------------------------------------------
     #                     Set Variables that will change
-
-    # Set the path prefix depending on if this script is called manually by a
-    #  user, or called by a scheduled task on ATLANTIC server.
-    called_by = arcpy.GetParameterAsText(0)
-
-    if called_by == 'MANUAL':
-        path_prefix = 'U:'
-
-    elif called_by == 'SCHEDULED':
-        path_prefix = 'D:\users'
-
-    else:  # If script run directly and no called_by parameter specified
-        path_prefix = 'U:'
-
-    # Name of this script
-    name_of_script = 'Download_AGOL_Homeless_Activity.py'
-
-    # Full path to a text file that has the username and password of an account
-    #  that has access to at least VIEW the FS in AGOL, as well as an email
-    #  account that has access to send emails.
-    cfgFile     = r"{}\yakos\hep_A\PROD\Environment_B\Scripts_B\Source_Code\config_file.ini".format(path_prefix)
-    if os.path.isfile(cfgFile):
-        config = ConfigParser.ConfigParser()
-        config.read(cfgFile)
-    else:
-        print("INI file not found. \nMake sure a valid '.ini' file exists at {}.".format(cfgFile))
-        sys.exit()
-
-    # Set the log file variables
-    log_file = r'{}\yakos\hep_A\PROD\Environment_B\Scripts_B\Logs\Download_AGOL_Homeless_Activity'.format(path_prefix)
-
-    # FS_name is the name of the Feature Service (FS) with the layer you want
-    #  to download (d/l).  For example: "Homeless_Activity_Sites"
-    FS_names        = config.get('Download_Info', 'FS_names')
-    FS_names_ls = FS_names.split(', ')  # Get list of FS to download
-
-    # Index of the layer in the FS you want to d/l.  Frequently 0.
-    index_of_layers = config.get('Download_Info', 'FS_indexes')
-    index_of_layers_ls = index_of_layers.split(', ')  # Get list of indexes to download
-
-    # Set variables of where you want the data to go, and what the d/l FC name should be.
-    wkg_folder     = r'{}\yakos\hep_A\PROD\Environment_B\Data_B'.format(path_prefix)
-    FGDB_names     = config.get('Download_Info', 'FGDB_names')
-    FGDB_names_ls  = FGDB_names.split(', ')  # Get list of names of the existing FGDB's to put the new data into
-
-    FC_names       = config.get('Download_Info', 'FC_names')
-    FC_names_ls    = FC_names.split(', ')  # Get list of names for the FC's to be created
-
-    # Set the Email variables
-    email_admin_ls = ['michael.grue@sdcounty.ca.gov', 'randy.yakos@sdcounty.ca.gov', 'gary.ross@sdcounty.ca.gov']
+    FS_url         = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/arcgis/rest/services/DPW_WP_SITES_DEV_2/FeatureServer'
+    index_of_layer = 0
+    wkg_folder     = r'P:\DPW_ScienceAndMonitoring\Working\Test'
+    wkg_FGDB       = 'Testing.gdb'
+    FC_name        = 'Testing_Domain'
 
     #---------------------------------------------------------------------------
-    #                Set Variables that will probably not change
-
-    # We will get all the fields
-    AGOL_fields = '*'
-
-    # Flag to control if there is an error
-    success = True
+    #                     Set Variables that will probably not change
+    cfgFile = r"P:\DPW_ScienceAndMonitoring\Scripts\DEV\DEV_branch\Control_Files\accounts.txt"
+    AGOL_fields    = '*'
 
     #---------------------------------------------------------------------------
     #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     #---------------------------------------------------------------------------
     #                          Start Calling Functions
 
-    # Turn all 'print' statements into a log-writing object
-    if success == True:
-        try:
-            orig_stdout, log_file_date = Write_Print_To_Log(log_file, name_of_script)
-        except Exception as e:
-            success = False
-            print '*** ERROR with Write_Print_To_Log() ***'
-            print str(e)
-
-    # Get a token with permissions to view the data
-    if success == True:
-        try:
-            token = Get_Token(cfgFile)
-        except Exception as e:
-            success = False
-            print '*** ERROR with Get_Token() ***'
-            print str(e)
+    # Get a token
+    token = Get_Token(cfgFile)
 
     # Download the data
-    if success == True:
-
-        for count, index_of_layer in enumerate(index_of_layers_ls):  # This list has the index of every layer we want to download
-
-            # Set the full FS URL. "1vIhDJwtG5eNmiqX" is the CoSD portal server so it shouldn't change much.
-            FS_url  = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/arcgis/rest/services/{}/FeatureServer'.format(FS_names_ls[count])
-
-            # Set the name of the FGDB
-            wkg_FGDB = FGDB_names_ls[count]
-
-            # Set the name of the FC we want to create in our FGDB
-            FC_name = FC_names_ls[count]
-            dt_to_append = Get_DT_To_Append()
-            FC_name_date = FC_name + '_' + dt_to_append
-
-            try:
-                Get_AGOL_Data_All(AGOL_fields, token, FS_url, index_of_layer, wkg_folder, wkg_FGDB, FC_name_date)
-
-            except Exception as e:
-                success = False
-                print '*** ERROR with Get_AGOL_Data_All() ***'
-                print str(e)
-
-    # Footer for log file
-    finish_time_str = [datetime.datetime.now().strftime('%m/%d/%Y  %I:%M:%S %p')][0]
-    print '\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++'
-    print '                    {}'.format(finish_time_str)
-    print '              Finished {}'.format(name_of_script)
-    print '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++'
-
-    # End of script reporting
-    print 'Success = {}'.format(success)
-    sys.stdout = orig_stdout
-
-    # Email recipients
-    if success == True:
-        subj = 'SUCCESS running {}'.format(name_of_script)
-        body = """Success<br>
-        The Log file name is: {}""".format(os.path.basename(log_file_date))
-
-    else:
-        subj = 'ERROR running {}'.format(name_of_script)
-        body = """There was an error with this script.<br>
-        Please see the log file for more info.<br>
-        The Log file name is: {}""".format(os.path.basename(log_file_date))
-
-    Email_W_Body(subj, body, email_admin_ls, cfgFile)
-
-    if success == True:
-        print 'SUCCESSFULLY ran Download_AGOL_Homeless_Activity.py'
-        print 'Please find downloaded data at:\n  {}\n'.format(wkg_folder)
-    else:
-        print '*** ERROR with Download_AGOL_Homeless_Activity.py ***'
-        print 'Please see log file (noted above) for troubleshooting\n'
-
-    if called_by == 'MANUAL':
-        raw_input('Press ENTER to continue')
-
+    Get_AGOL_Data_All(AGOL_fields, token, FS_url, index_of_layer, wkg_folder, wkg_FGDB, FC_name)
 #-------------------------------------------------------------------------------
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #-------------------------------------------------------------------------------
 #                              Define Functions
 #-------------------------------------------------------------------------------
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-#-------------------------------------------------------------------------------
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-#                          FUNCTION Write_Print_To_Log()
-def Write_Print_To_Log(log_file, name_of_script):
-    """
-    PARAMETERS:
-      log_file (str): Path to log file.  The part after the last "\" will be the
-        name of the .log file after the date, time, and ".log" is appended to it.
-
-    RETURNS:
-      orig_stdout (os object): The original stdout is saved in this variable so
-        that the script can access it and return stdout back to its orig settings.
-
-    FUNCTION:
-      To turn all the 'print' statements into a log-writing object.  A new log
-        file will be created based on log_file with the date, time, ".log"
-        appended to it.  And any print statements after the command
-        "sys.stdout = write_to_log" will be written to this log.
-      It is a good idea to use the returned orig_stdout variable to return sys.stdout
-        back to its original setting.
-      NOTE: This function needs the function Get_DT_To_Append() to run
-
-    """
-    ##print 'Starting Write_Print_To_Log()...'
-
-    # Get the original sys.stdout so it can be returned to normal at the
-    #    end of the script.
-    orig_stdout = sys.stdout
-
-    # Get DateTime to append
-    dt_to_append = Get_DT_To_Append()
-
-    # Create the log file with the datetime appended to the file name
-    log_file_date = '{}_{}.log'.format(log_file,dt_to_append)
-    write_to_log = open(log_file_date, 'w')
-
-    # Make the 'print' statement write to the log file
-    print 'Find log file found at:\n  {}'.format(log_file_date)
-    print '\nProcessing...\n'
-    sys.stdout = write_to_log
-
-    # Header for log file
-    start_time = datetime.datetime.now()
-    start_time_str = [start_time.strftime('%m/%d/%Y  %I:%M:%S %p')][0]
-    print '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++'
-    print '                  {}'.format(start_time_str)
-    print '             START {}'.format(name_of_script)
-    print '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n'
-
-    return orig_stdout, log_file_date
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-#                          FUNCTION Get_dt_to_append
-def Get_DT_To_Append():
-    """
-    PARAMETERS:
-      none
-
-    RETURNS:
-      dt_to_append (str): Which is in the format 'YYYY_MM_DD__HH_MM_SS'
-
-    FUNCTION:
-      To get a formatted datetime string that can be used to append to files
-      to keep them unique.
-    """
-    ##print 'Starting Get_DT_To_Append()...'
-
-    start_time = datetime.datetime.now()
-
-    date = start_time.strftime('%Y_%m_%d')
-    time = start_time.strftime('%H_%M_%S')
-
-    dt_to_append = '%s__%s' % (date, time)
-
-    ##print '  DateTime to append: {}'.format(dt_to_append)
-
-    ##print 'Finished Get_DT_To_Append()\n'
-    return dt_to_append
-
-#-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
 #                       FUNCTION:    Get AGOL token
 def Get_Token(cfgFile, gtURL="https://www.arcgis.com/sharing/rest/generateToken"):
@@ -269,13 +67,6 @@ def Get_Token(cfgFile, gtURL="https://www.arcgis.com/sharing/rest/generateToken"
         Path to the .txt file that holds the user name and password of the
         account used to access the data.  This account must be in a group
         that has access to the online database.
-        The format of the config file should be as below with
-        <username> and <password> completed:
-
-          [AGOL]
-          usr: <username>
-          pwd: <password>
-
       gtURL {str}: URL where ArcGIS generates tokens. OPTIONAL.
 
     VARS:
@@ -486,68 +277,6 @@ def Get_AGOL_Data_All(AGOL_fields, token, FS_url, index_of_layer, wkg_folder, wk
     print 'Finished Get_AGOL_Data_All()'
 
     return
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-#                               Function Email_W_Body()
-def Email_W_Body(subj, body, email_list, cfgFile=
-    r"P:\DPW_ScienceAndMonitoring\Scripts\DEV\DEV_branch\Control_Files\accounts.txt"):
-
-    """
-    PARAMETERS:
-      subj (str): Subject of the email
-      body (str): Body of the email in HTML.  Can be a simple string, but you
-        can use HTML markup like <b>bold</b>, <i>italic</i>, <br>carriage return
-        <h1>Header 1</h1>, etc.
-      email_list (str): List of strings that contains the email addresses to
-        send the email to.
-      cfgFile {str}: Path to a config file with username and password.
-        The format of the config file should be as below with
-        <username> and <password> completed:
-
-          [email]
-          usr: <username>
-          pwd: <password>
-
-        OPTIONAL. A default will be used if one isn't given.
-
-    RETURNS:
-      None
-
-    FUNCTION: To send an email to the listed recipients.
-      If you want to provide a log file to include in the body of the email,
-      please use function Email_w_LogFile()
-    """
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    import ConfigParser, smtplib
-
-    print '  Starting Email_W_Body()'
-    print '    With Subject: {}'.format(subj)
-
-    # Set the subj, From, To, and body
-    msg = MIMEMultipart()
-    msg['Subject']   = subj
-    msg['From']      = "Python Script"
-    msg['To']        = ', '.join(email_list)  # Join each item in list with a ', '
-    msg.attach(MIMEText(body, 'html'))
-
-    # Get username and password from cfgFile
-    config = ConfigParser.ConfigParser()
-    config.read(cfgFile)
-    email_usr = config.get('email', 'usr')
-    email_pwd = config.get('email', 'pwd')
-
-    # Send the email
-    ##print '  Sending the email to:  {}'.format(', '.join(email_list))
-    SMTP_obj = smtplib.SMTP('smtp.gmail.com',587)
-    SMTP_obj.starttls()
-    SMTP_obj.login(email_usr, email_pwd)
-    SMTP_obj.sendmail(email_usr, email_list, msg.as_string())
-    SMTP_obj.quit()
-    time.sleep(2)
-
-    print '  Successfully emailed results.'
 
 #-------------------------------------------------------------------------------
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
