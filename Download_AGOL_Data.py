@@ -201,13 +201,13 @@ def main():
     if success == True:
         subj = 'SUCCESS running {}'.format(name_of_script)
         body = """Success<br>
-        The Log file name is: {}""".format(os.path.basename(log_file_date))
+        The Log file is at: {}""".format(log_file_date)
 
     else:
         subj = 'ERROR running {}'.format(name_of_script)
         body = """There was an error with this script.<br>
         Please see the log file for more info.<br>
-        The Log file name is: {}""".format(os.path.basename(log_file_date))
+        The Log file is at: {}""".format(log_file_date)
 
     Email_W_Body(subj, body, email_admin_ls, cfgFile)
 
