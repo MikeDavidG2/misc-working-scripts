@@ -52,6 +52,267 @@ def AGOL_Delete_Features(name_of_FS, index_of_layer_in_FS, object_ids, token):
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
+#                             FUNCTION Get_AGOL_Data_All()
+def AGOL_Get_Data_All(AGOL_fields, token, FS_url, index_of_layer, wkg_folder, wkg_FGDB, FC_name):
+    """
+    PARAMETERS:
+      AGOL_fields (str) = The fields we want to have the server return from our query.
+        use the string ('*') to return all fields.
+      token (str) = The token obtained by the Get_Token() which gives access to
+        AGOL databases that we have permission to access.
+      FS_url (str) = The URL address for the feature service.
+        Should be the service URL on AGOL (up to the '/FeatureServer' part).
+      index_of_layer (int)= The index of the specific layer in the FS to download.
+        i.e. 0 if it is the first layer in the FS, 1 if it is the second layer, etc.
+      wkg_folder (str) = Full path to the folder that contains the FGDB that you
+        want to download the data into.  Folder must already exist.
+      wkg_FGDB (str) = Name of the working FGDB in the wkg_folder.  FGDB must
+        already exist.
+      FC_name (str) = The name of the FC that will be created to hold the data
+        downloaded by this function.  This FC gets overwritten every time the
+        script is run.  FC does NOT need to already exist.
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      To download ALL data from a layer in a FS on AGOL, using OBJECTIDs.
+      This function, establishs a connection to the
+      data, finds out the number of features, gets the highest and lowest OBJECTIDs,
+      and the maxRecordCount returned by the server, and then loops through the
+      AGOL data and downloads it to the FGDB.  The first time the data is d/l by
+      the script it will create a FC.  Any subsequent loops will download the
+      next set of data and then append the data to the first FC.  This looping
+      will happen until all the data has been downloaded and appended to the one
+      FC created in the first loop.
+
+    NOTE:
+      Need to have obtained a token from the Get_Token() function.
+      Need to have an existing FGDB to download data into.
+    """
+    print '--------------------------------------------------------------------'
+    print 'Starting Get_AGOL_Data_All()'
+
+    import urllib2, json, urllib
+
+    # Set URLs
+    query_url = FS_url + '/{}/query'.format(index_of_layer)
+    print '  Downloading all data found at: {}/{}\n'.format(FS_url, index_of_layer)
+
+    #---------------------------------------------------------------------------
+    #        Get the number of records are in the Feature Service layer
+
+    # This query returns ALL the OBJECTIDs that are in a FS regardless of the
+    #   'max records returned' setting
+    query = "?where=1=1&returnIdsOnly=true&f=json&token={}".format(token)
+    obj_count_URL = query_url + query
+    ##print obj_count_URL  # For testing purposes
+    response = urllib2.urlopen(obj_count_URL)  # Send the query to the web
+    obj_count_json = json.load(response)  # Store the response as a json object
+    try:
+        object_ids = obj_count_json['objectIds']
+    except:
+        print 'ERROR!'
+        print obj_count_json['error']['message']
+
+    num_object_ids = len(object_ids)
+    print '  Number of records in FS layer: {}'.format(num_object_ids)
+
+    #---------------------------------------------------------------------------
+    #                  Get the lowest and highest OBJECTID
+    object_ids.sort()
+    lowest_obj_id = object_ids[0]
+    highest_obj_id = object_ids[num_object_ids-1]
+    print '  The lowest OBJECTID is: {}\n  The highest OBJECTID is: {}'.format(\
+                                                  lowest_obj_id, highest_obj_id)
+
+    #---------------------------------------------------------------------------
+    #               Get the 'maxRecordCount' of the Feature Service
+    # 'maxRecordCount' is the number of records the server will return
+    # when we make a query on the data.
+    query = '?f=json&token={}'.format(token)
+    max_count_url = FS_url + query
+    ##print max_count_url  # For testing purposes
+    response = urllib2.urlopen(max_count_url)
+    max_record_count_json = json.load(response)
+    max_record_count = max_record_count_json['maxRecordCount']
+    print '  The max record count is: {}\n'.format(str(max_record_count))
+
+
+    #---------------------------------------------------------------------------
+
+    # Set the variables needed in the loop below
+    start_OBJECTID = lowest_obj_id  # i.e. 1
+    end_OBJECTID   = lowest_obj_id + max_record_count - 1  # i.e. 1000
+    last_dl_OBJECTID = 0  # The last downloaded OBJECTID
+    first_iteration = True  # Changes to False at the end of the first loop
+
+    while last_dl_OBJECTID <= highest_obj_id:
+        where_clause = 'OBJECTID >= {} AND OBJECTID <= {}'.format(start_OBJECTID, end_OBJECTID)
+
+        # Encode the where_clause so it is readable by URL protocol (ie %27 = ' in URL).
+        # visit http://meyerweb.com/eric/tools/dencoder to test URL encoding.
+        # If you suspect the where clause is causing the problems, uncomment the
+        #   below 'where = "1=1"' clause.
+        ##where_clause = "1=1"  # For testing purposes
+        print '  Getting data where: {}'.format(where_clause)
+        where_encoded = urllib.quote(where_clause)
+        query = "?where={}&outFields={}&returnGeometry=true&f=json&token={}".format(where_encoded, AGOL_fields, token)
+        fsURL = query_url + query
+
+        # Create empty Feature Set object
+        fs = arcpy.FeatureSet()
+
+        #---------------------------------------------------------------------------
+        #                 Try to load data into Feature Set object
+        # This try/except is because the fs.load(fsURL) will fail whenever no data
+        # is returned by the query.
+        try:
+            ##print 'fsURL %s' % fsURL  # For testing purposes
+            fs.load(fsURL)
+        except:
+            print '*** ERROR, data not downloaded ***'
+
+        #-----------------------------------------------------------------------
+        # Process d/l data
+
+        if first_iteration == True:  # Then this is the first run and d/l data to the FC_name
+            path = wkg_folder + "\\" + wkg_FGDB + '\\' + FC_name
+        else:
+            path = wkg_folder + "\\" + wkg_FGDB + '\\temp_to_append'
+
+        #Copy the features to the FGDB.
+        print '    Copying AGOL database features to: %s' % path
+        arcpy.CopyFeatures_management(fs,path)
+
+        # If this is a subsequent run then append the newly d/l data to the FC_name
+        if first_iteration == False:
+            orig_path = wkg_folder + "\\" + wkg_FGDB + '\\' + FC_name
+            print '    Appending:\n      {}\n      To:\n      {}'.format(path, orig_path)
+            arcpy.Append_management(path, orig_path, 'NO_TEST')
+
+            print '    Deleting temp_to_append'
+            arcpy.Delete_management(path)
+
+        # Set the last downloaded OBJECTID
+        last_dl_OBJECTID = end_OBJECTID
+
+        # Set the starting and ending OBJECTID for the next iteration
+        start_OBJECTID = end_OBJECTID + 1
+        end_OBJECTID   = start_OBJECTID + max_record_count - 1
+
+        # If we reached this point we have gone through one full iteration
+        first_iteration = False
+        print ''
+
+    if first_iteration == False:
+        print "  Successfully retrieved data.\n"
+    else:
+        print '  * WARNING, no data was downloaded. *'
+
+    print 'Finished Get_AGOL_Data_All()'
+
+    return
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#                             FUNCTION Get_AGOL_Data_Where()
+def AGOL_Get_Data_Where(AGOL_fields, token, FS_url, index_of_layer, where_clause, wkg_folder, wkg_FGDB, orig_FC):
+    """
+    PARAMETERS:
+      AGOL_fields (str) = The fields we want to have the server return from our query.
+        use the string ('*') to return all fields.
+      token (str) = The token obtained by the Get_Token() which gives access to
+        AGOL databases that we have permission to access.
+      FS_url (str) = The URL address for the feature service.
+        Should be the service URL on AGOL (up to the '/FeatureServer' part).
+      index_of_layer (int)= The index of the specific layer in the FS to download.
+        i.e. 0 if it is the first layer in the FS, 1 if it is the second layer, etc.
+      where_clause (str) = The where clause to add to the query to receive a
+        subset of the full dataset.
+      wkg_folder (str) = Full path to the 'Data' folder that contains the FGDB's,
+        Excel files, Logs, and Pictures.
+      wkg_FGDB (str) = Name of the working FGDB in the wkgFolder.
+      orig_FC (str) = Name of the FC that will hold the original data downloaded
+        by this function.  This FC gets overwritten every time the script is run.
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      Uses a where_clause to download a subset of data from the FS.
+      To download data from AGOL.  This function, establishs a connection to the
+      data, creates a FGDB (if needed), creates a FC (or overwrites the existing
+      one to store the data, and then copies the data from AGOL to the FC.
+
+    NOTE:
+      Need to have obtained a token from the Get_Token() function.
+    """
+
+    print 'Starting Get_AGOL_Data()'
+
+    # Set URLs
+    query_url = FS_url + '/{}/query'.format(index_of_layer)
+
+    # Encode the where_clause so it is readable by URL protocol (ie %27 = ' in URL).
+    # visit http://meyerweb.com/eric/tools/dencoder to test URL encoding.
+    # If you suspect the where clause is causing the problems, uncomment the
+    #   below 'where = "1=1"' clause.
+    ##where_clause = "1=1"  # For testing purposes
+    print '  Getting data where: {}'.format(where_clause)
+    where_encoded = urllib.quote(where_clause)
+    query = "?where={}&outFields={}&returnGeometry=true&f=json&token={}".format(where_encoded, AGOL_fields, token)
+    fsURL = query_url + query
+
+    # Create empty Feature Set object
+    fs = arcpy.FeatureSet()
+
+    #---------------------------------------------------------------------------
+    #                 Try to load data into Feature Set object
+    # This try/except is because the fs.load(fsURL) will fail whenever no data
+    # is returned by the query.
+    try:
+        ##print 'fsURL %s' % fsURL  # For testing purposes
+        fs.load(fsURL)
+    except:
+        print '  "fs.load(fsURL)" yielded no data at fsURL.'
+        print '  Query may not have yielded any records.'
+        print '  Could simply mean there was no data satisfied by the query.'
+        print '  Or could be another problem with the Get_AGOL_Data() function.'
+        print '  Feature Service: %s' % str(fsURL)
+
+        # If no data downloaded, stop the function here
+        print '\n  * WARNING, no data downloaded *'
+        print 'Finished Get_AGOL_Data()'
+        return
+
+    #---------------------------------------------------------------------------
+    #             Data was loaded, CONTINUE the downloading process
+
+    #Create working FGDB if it does not already exist. Leave alone if it does...
+    FGDB_path = wkg_folder + '\\' + wkg_FGDB
+    if not os.path.exists(FGDB_path):
+        print '  Creating FGDB: %s at: %s' % (wkg_FGDB, wkg_folder)
+
+        # Process
+        arcpy.CreateFileGDB_management(wkg_folder,wkg_FGDB)
+
+    #---------------------------------------------------------------------------
+    #Copy the features to the FGDB.
+    orig_path = wkg_folder + "\\" + wkg_FGDB + '\\' + orig_FC
+    print '  Copying AGOL database features to: %s' % orig_path
+
+    # Process
+    arcpy.CopyFeatures_management(fs,orig_path)
+
+    #---------------------------------------------------------------------------
+    print "  Successfully retrieved data.\n"
+    print 'Finished Get_AGOL_Data()'
+
+    return
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 #                FUNCTION:    Get AGOL Object IDs Where
 
 def AGOL_Get_Object_Ids_Where(name_of_FS, index_of_layer_in_FS, where_clause, token):
@@ -176,7 +437,7 @@ def AGOL_Update_Features(name_of_FS, index_of_layer_in_FS, object_id, field_to_u
         ##print result
         print '    OBJECTID: {}'.format(result['objectId'])
         print '      Updated? {}'.format(result['success'])
-        if result['success'] != 'True':
+        if result['success'] != True:
             success = False
 
     print 'Finished AGOL_Update_Features()\n'
@@ -989,332 +1250,80 @@ def Export_To_Excel(wkg_folder, wkg_FGDB, table_to_export, export_folder, dt_to_
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
-#                             FUNCTION Get_AGOL_Data_All()
-def Get_AGOL_Data_All(AGOL_fields, token, FS_url, index_of_layer, wkg_folder, wkg_FGDB, FC_name):
+#                        FUNCTION: ADD FIELDS
+
+def Fields_Add_Fields(wkg_data, add_fields_csv):
     """
     PARAMETERS:
-      AGOL_fields (str) = The fields we want to have the server return from our query.
-        use the string ('*') to return all fields.
-      token (str) = The token obtained by the Get_Token() which gives access to
-        AGOL databases that we have permission to access.
-      FS_url (str) = The URL address for the feature service.
-        Should be the service URL on AGOL (up to the '/FeatureServer' part).
-      index_of_layer (int)= The index of the specific layer in the FS to download.
-        i.e. 0 if it is the first layer in the FS, 1 if it is the second layer, etc.
-      wkg_folder (str) = Full path to the folder that contains the FGDB that you
-        want to download the data into.  Folder must already exist.
-      wkg_FGDB (str) = Name of the working FGDB in the wkg_folder.  FGDB must
-        already exist.
-      FC_name (str) = The name of the FC that will be created to hold the data
-        downloaded by this function.  This FC gets overwritten every time the
-        script is run.  FC does NOT need to already exist.
+      wkg_data (str) = Name of the working FC in the wkgGDB. This is the FC
+        that is processed.
+      add_fields_csv (str) = Full path to the CSV file that lists which fields
+        should be created.
 
     RETURNS:
       None
 
     FUNCTION:
-      To download ALL data from a layer in a FS on AGOL, using OBJECTIDs.
-      This function, establishs a connection to the
-      data, finds out the number of features, gets the highest and lowest OBJECTIDs,
-      and the maxRecordCount returned by the server, and then loops through the
-      AGOL data and downloads it to the FGDB.  The first time the data is d/l by
-      the script it will create a FC.  Any subsequent loops will download the
-      next set of data and then append the data to the first FC.  This looping
-      will happen until all the data has been downloaded and appended to the one
-      FC created in the first loop.
-
-    NOTE:
-      Need to have obtained a token from the Get_Token() function.
-      Need to have an existing FGDB to download data into.
+      To add fields to the wkg_data using a CSV file located at add_fields_csv.
     """
+    import csv
+
     print '--------------------------------------------------------------------'
-    print 'Starting Get_AGOL_Data_All()'
+    print 'Adding fields to:\n  %s' % wkg_data
+    print '  Using Control CSV at:\n    {}\n'.format(add_fields_csv)
+    with open (add_fields_csv) as csv_file:
+        readCSV = csv.reader(csv_file, delimiter = ',')
 
-    import urllib2, json, urllib
+        # Create blank lists
+        f_names = []
+        f_types = []
+        f_lengths = []
 
-    # Set URLs
-    query_url = FS_url + '/{}/query'.format(index_of_layer)
-    print '  Downloading all data found at: {}/{}\n'.format(FS_url, index_of_layer)
+        row_num = 0
+        for row in readCSV:
+            if row_num > 1:
+                f_name   = row[0]
+                f_type   = row[1]
+                f_length = row[2]
 
-    #---------------------------------------------------------------------------
-    #        Get the number of records are in the Feature Service layer
+                f_names.append(f_name)
+                f_types.append(f_type)
+                f_lengths.append(f_length)
+            row_num += 1
 
-    # This query returns ALL the OBJECTIDs that are in a FS regardless of the
-    #   'max records returned' setting
-    query = "?where=1=1&returnIdsOnly=true&f=json&token={}".format(token)
-    obj_count_URL = query_url + query
-    ##print obj_count_URL  # For testing purposes
-    response = urllib2.urlopen(obj_count_URL)  # Send the query to the web
-    obj_count_json = json.load(response)  # Store the response as a json object
-    try:
-        object_ids = obj_count_json['objectIds']
-    except:
-        print 'ERROR!'
-        print obj_count_json['error']['message']
+    num_new_fs = len(f_names)
+    print '    There are %s new fields to add:' % str(num_new_fs)
 
-    num_object_ids = len(object_ids)
-    print '  Number of records in FS layer: {}'.format(num_object_ids)
+    f_counter = 0
+    while f_counter < num_new_fs:
+        print ('      Creating field: %s, with a type of: %s, and a length of: %s'
+        % (f_names[f_counter], f_types[f_counter], f_lengths[f_counter]))
 
-    #---------------------------------------------------------------------------
-    #                  Get the lowest and highest OBJECTID
-    object_ids.sort()
-    lowest_obj_id = object_ids[0]
-    highest_obj_id = object_ids[num_object_ids-1]
-    print '  The lowest OBJECTID is: {}\n  The highest OBJECTID is: {}'.format(\
-                                                  lowest_obj_id, highest_obj_id)
-
-    #---------------------------------------------------------------------------
-    #               Get the 'maxRecordCount' of the Feature Service
-    # 'maxRecordCount' is the number of records the server will return
-    # when we make a query on the data.
-    query = '?f=json&token={}'.format(token)
-    max_count_url = FS_url + query
-    ##print max_count_url  # For testing purposes
-    response = urllib2.urlopen(max_count_url)
-    max_record_count_json = json.load(response)
-    max_record_count = max_record_count_json['maxRecordCount']
-    print '  The max record count is: {}\n'.format(str(max_record_count))
+        in_table          = wkg_data
+        field_name        = f_names[f_counter]
+        field_type        = f_types[f_counter]
+        field_precision   = '#'
+        field_scale       = '#'
+        field_length      = f_lengths[f_counter]
+        field_alias       = '#'
+        field_is_nullable = '#'
+        field_is_required = '#'
+        field_domain      = '#'
 
 
-    #---------------------------------------------------------------------------
-
-    # Set the variables needed in the loop below
-    start_OBJECTID = lowest_obj_id  # i.e. 1
-    end_OBJECTID   = lowest_obj_id + max_record_count - 1  # i.e. 1000
-    last_dl_OBJECTID = 0  # The last downloaded OBJECTID
-    first_iteration = True  # Changes to False at the end of the first loop
-
-    while last_dl_OBJECTID <= highest_obj_id:
-        where_clause = 'OBJECTID >= {} AND OBJECTID <= {}'.format(start_OBJECTID, end_OBJECTID)
-
-        # Encode the where_clause so it is readable by URL protocol (ie %27 = ' in URL).
-        # visit http://meyerweb.com/eric/tools/dencoder to test URL encoding.
-        # If you suspect the where clause is causing the problems, uncomment the
-        #   below 'where = "1=1"' clause.
-        ##where_clause = "1=1"  # For testing purposes
-        print '  Getting data where: {}'.format(where_clause)
-        where_encoded = urllib.quote(where_clause)
-        query = "?where={}&outFields={}&returnGeometry=true&f=json&token={}".format(where_encoded, AGOL_fields, token)
-        fsURL = query_url + query
-
-        # Create empty Feature Set object
-        fs = arcpy.FeatureSet()
-
-        #---------------------------------------------------------------------------
-        #                 Try to load data into Feature Set object
-        # This try/except is because the fs.load(fsURL) will fail whenever no data
-        # is returned by the query.
         try:
-            ##print 'fsURL %s' % fsURL  # For testing purposes
-            fs.load(fsURL)
-        except:
-            print '*** ERROR, data not downloaded ***'
+            # Process
+            arcpy.AddField_management(in_table, field_name, field_type,
+                        field_precision, field_scale, field_length, field_alias,
+                        field_is_nullable, field_is_required, field_domain)
+        except Exception as e:
+            print '*** WARNING! Field: %s was not able to be added.***' % field_name
+            print str(e)
+        f_counter += 1
 
-        #-----------------------------------------------------------------------
-        # Process d/l data
-
-        if first_iteration == True:  # Then this is the first run and d/l data to the FC_name
-            path = wkg_folder + "\\" + wkg_FGDB + '\\' + FC_name
-        else:
-            path = wkg_folder + "\\" + wkg_FGDB + '\\temp_to_append'
-
-        #Copy the features to the FGDB.
-        print '    Copying AGOL database features to: %s' % path
-        arcpy.CopyFeatures_management(fs,path)
-
-        # If this is a subsequent run then append the newly d/l data to the FC_name
-        if first_iteration == False:
-            orig_path = wkg_folder + "\\" + wkg_FGDB + '\\' + FC_name
-            print '    Appending:\n      {}\n      To:\n      {}'.format(path, orig_path)
-            arcpy.Append_management(path, orig_path, 'NO_TEST')
-
-            print '    Deleting temp_to_append'
-            arcpy.Delete_management(path)
-
-        # Set the last downloaded OBJECTID
-        last_dl_OBJECTID = end_OBJECTID
-
-        # Set the starting and ending OBJECTID for the next iteration
-        start_OBJECTID = end_OBJECTID + 1
-        end_OBJECTID   = start_OBJECTID + max_record_count - 1
-
-        # If we reached this point we have gone through one full iteration
-        first_iteration = False
-        print ''
-
-    if first_iteration == False:
-        print "  Successfully retrieved data.\n"
-    else:
-        print '  * WARNING, no data was downloaded. *'
-
-    print 'Finished Get_AGOL_Data_All()'
+    print 'Successfully added fields.\n'
 
     return
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-#                             FUNCTION Get_AGOL_Data_Where()
-def Get_AGOL_Data_Where(AGOL_fields, token, FS_url, index_of_layer, where_clause, wkg_folder, wkg_FGDB, orig_FC):
-    """
-    PARAMETERS:
-      AGOL_fields (str) = The fields we want to have the server return from our query.
-        use the string ('*') to return all fields.
-      token (str) = The token obtained by the Get_Token() which gives access to
-        AGOL databases that we have permission to access.
-      FS_url (str) = The URL address for the feature service.
-        Should be the service URL on AGOL (up to the '/FeatureServer' part).
-      index_of_layer (int)= The index of the specific layer in the FS to download.
-        i.e. 0 if it is the first layer in the FS, 1 if it is the second layer, etc.
-      where_clause (str) = The where clause to add to the query to receive a
-        subset of the full dataset.
-      wkg_folder (str) = Full path to the 'Data' folder that contains the FGDB's,
-        Excel files, Logs, and Pictures.
-      wkg_FGDB (str) = Name of the working FGDB in the wkgFolder.
-      orig_FC (str) = Name of the FC that will hold the original data downloaded
-        by this function.  This FC gets overwritten every time the script is run.
-
-    RETURNS:
-      None
-
-    FUNCTION:
-      Uses a where_clause to download a subset of data from the FS.
-      To download data from AGOL.  This function, establishs a connection to the
-      data, creates a FGDB (if needed), creates a FC (or overwrites the existing
-      one to store the data, and then copies the data from AGOL to the FC.
-
-    NOTE:
-      Need to have obtained a token from the Get_Token() function.
-    """
-
-    print 'Starting Get_AGOL_Data()'
-
-    # Set URLs
-    query_url = FS_url + '/{}/query'.format(index_of_layer)
-
-    # Encode the where_clause so it is readable by URL protocol (ie %27 = ' in URL).
-    # visit http://meyerweb.com/eric/tools/dencoder to test URL encoding.
-    # If you suspect the where clause is causing the problems, uncomment the
-    #   below 'where = "1=1"' clause.
-    ##where_clause = "1=1"  # For testing purposes
-    print '  Getting data where: {}'.format(where_clause)
-    where_encoded = urllib.quote(where_clause)
-    query = "?where={}&outFields={}&returnGeometry=true&f=json&token={}".format(where_encoded, AGOL_fields, token)
-    fsURL = query_url + query
-
-    # Create empty Feature Set object
-    fs = arcpy.FeatureSet()
-
-    #---------------------------------------------------------------------------
-    #                 Try to load data into Feature Set object
-    # This try/except is because the fs.load(fsURL) will fail whenever no data
-    # is returned by the query.
-    try:
-        ##print 'fsURL %s' % fsURL  # For testing purposes
-        fs.load(fsURL)
-    except:
-        print '  "fs.load(fsURL)" yielded no data at fsURL.'
-        print '  Query may not have yielded any records.'
-        print '  Could simply mean there was no data satisfied by the query.'
-        print '  Or could be another problem with the Get_AGOL_Data() function.'
-        print '  Feature Service: %s' % str(fsURL)
-
-        # If no data downloaded, stop the function here
-        print '\n  * WARNING, no data downloaded *'
-        print 'Finished Get_AGOL_Data()'
-        return
-
-    #---------------------------------------------------------------------------
-    #             Data was loaded, CONTINUE the downloading process
-
-    #Create working FGDB if it does not already exist. Leave alone if it does...
-    FGDB_path = wkg_folder + '\\' + wkg_FGDB
-    if not os.path.exists(FGDB_path):
-        print '  Creating FGDB: %s at: %s' % (wkg_FGDB, wkg_folder)
-
-        # Process
-        arcpy.CreateFileGDB_management(wkg_folder,wkg_FGDB)
-
-    #---------------------------------------------------------------------------
-    #Copy the features to the FGDB.
-    orig_path = wkg_folder + "\\" + wkg_FGDB + '\\' + orig_FC
-    print '  Copying AGOL database features to: %s' % orig_path
-
-    # Process
-    arcpy.CopyFeatures_management(fs,orig_path)
-
-    #---------------------------------------------------------------------------
-    print "  Successfully retrieved data.\n"
-    print 'Finished Get_AGOL_Data()'
-
-    return
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-#                FUNCTION:    Get AGOL Object IDs Where
-
-def AGOL_Get_Object_Ids_Where(name_of_FS, index_of_layer_in_FS, where_clause, token):
-    """
-    PARAMETERS:
-      name_of_FS (str): The name of the Feature Service (do not include things
-        like "services1.arcgis.com/1vIhDJwtG5eNmiqX/ArcGIS/rest/services", just
-        the name is needed.  i.e. "DPW_WP_SITES_DEV_VIEW".
-      index_of_layer_in_FS (int): The index of the layer in the Feature Service.
-        This will frequently be 0, but it could be a higer number if the FS has
-        multiple layers in it.
-      where_clause (str): Where clause. i.e.:
-        where_clause = "FIELD_NAME = 'Value in field'"
-      token (str): Obtained from the Get_Token()
-
-    RETURNS:
-      object_ids (list of str): List of OBJECTID's that satisfied the
-      where_clause.
-
-    FUNCTION:
-      To get a list of the OBJECTID's of the features that satisfied the
-      where clause.  This list will be the full list of all the records in the
-      FS regardless of the number of the returned OBJECTID's or the max record
-      count for the FS.
-
-    NOTE: This function assumes that you have already gotten a token from the
-    Get_Token() and are passing it to this function via the 'token' variable.
-    """
-
-    print '--------------------------------------------------------------------'
-    print "Starting Get_AGOL_Object_Ids_Where()"
-    import urllib2, urllib, json
-
-    # Create empty list to hold the OBJECTID's that satisfy the where clause
-    object_ids = []
-
-    # Encode the where_clause so it is readable by URL protocol (ie %27 = ' in URL).
-    # visit http://meyerweb.com/eric/tools/dencoder to test URL encoding.
-    where_encoded = urllib.quote(where_clause)
-
-    # Set URLs
-    query_url = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/ArcGIS/rest/services/{}/FeatureServer/{}/query'.format(name_of_FS, index_of_layer_in_FS)
-    query = '?where={}&returnIdsOnly=true&f=json&token={}'.format(where_encoded, token)
-    get_object_id_url = query_url + query
-
-    # Get the list of OBJECTID's that satisfied the where_clause
-
-    print '  Getting list of OBJECTID\'s that satisfied the where clause for layer:\n    {}'.format(query_url)
-    print '  Where clause: "{}"'.format(where_clause)
-    response = urllib2.urlopen(get_object_id_url)
-    response_json_obj = json.load(response)
-    object_ids = response_json_obj['objectIds']
-
-    if len(object_ids) > 0:
-        print '  There are "{}" features that satisfied the query.'.format(len(object_ids))
-        print '  OBJECTID\'s of those features:'
-        for obj in object_ids:
-            print '    {}'.format(obj)
-
-    else:
-        print '  No features satisfied the query.'
-
-    print "Finished Get_AGOL_Object_Ids_Where()\n"
-
-    return object_ids
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
