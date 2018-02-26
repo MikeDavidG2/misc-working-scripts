@@ -364,7 +364,12 @@ def AGOL_Get_Object_Ids_Where(name_of_FS, index_of_layer_in_FS, where_clause, to
     print '  Where clause: "{}"'.format(where_clause)
     response = urllib2.urlopen(get_object_id_url)
     response_json_obj = json.load(response)
-    object_ids = response_json_obj['objectIds']
+    try:
+        object_ids = response_json_obj['objectIds']
+    except KeyError:
+        print '***ERROR!  KeyError! ***'
+        print '  {}\n'.format(response_json_obj['error']['message'])
+        print '  If you receive "Invalid URL", are you sure you have the correct FS name?'
 
     if len(object_ids) > 0:
         print '  There are "{}" features that satisfied the query.'.format(len(object_ids))
@@ -378,6 +383,136 @@ def AGOL_Get_Object_Ids_Where(name_of_FS, index_of_layer_in_FS, where_clause, to
     print "Finished Get_AGOL_Object_Ids_Where()\n"
 
     return object_ids
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#                       FUNCTION:    Get AGOL token
+def AGOL_Get_Token(cfgFile, gtURL="https://www.arcgis.com/sharing/rest/generateToken"):
+    """
+    PARAMETERS:
+      cfgFile (str):
+        Path to the .txt file that holds the user name and password of the
+        account used to access the data.  This account must be in a group
+        that has access to the online database.
+        The format of the config file should be as below with
+        <username> and <password> completed:
+
+          [AGOL]
+          usr: <username>
+          pwd: <password>
+
+      gtURL {str}: URL where ArcGIS generates tokens. OPTIONAL.
+
+    VARS:
+      token (str):
+        a string 'password' from ArcGIS that will allow us to to access the
+        online database.
+
+    RETURNS:
+      token (str): A long string that acts as an access code to AGOL servers.
+        Used in later functions to gain access to our data.
+
+    FUNCTION: Gets a token from AGOL that allows access to the AGOL data.
+    """
+
+    print '--------------------------------------------------------------------'
+    print "Getting Token..."
+
+    import ConfigParser, urllib, urllib2, json
+
+    # Get the user name and password from the cfgFile
+    configRMA = ConfigParser.ConfigParser()
+    configRMA.read(cfgFile)
+    usr = configRMA.get("AGOL","usr")
+    pwd = configRMA.get("AGOL","pwd")
+
+    # Create a dictionary of the user name, password, and 2 other keys
+    gtValues = {'username' : usr, 'password' : pwd, 'referer' : 'http://www.arcgis.com', 'f' : 'json' }
+
+    # Encode the dictionary so they are in URL format
+    gtData = urllib.urlencode(gtValues)
+
+    # Create a request object with the URL adn the URL formatted dictionary
+    gtRequest = urllib2.Request(gtURL,gtData)
+
+    # Store the response to the request
+    gtResponse = urllib2.urlopen(gtRequest)
+
+    # Store the response as a json object
+    gtJson = json.load(gtResponse)
+
+    # Store the token from the json object
+    token = gtJson['token']
+    ##print token  # For testing purposes
+
+    print "Successfully retrieved token.\n"
+
+    return token
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#                 FUNCTION:  Query AGOL Features
+def AGOL_Query_Features(name_of_FS, index_of_layer_in_FS, object_ids, fields_to_report, token):
+    """
+    PARAMETERS:
+      name_of_FS (str): The name of the Feature Service (do not include things
+        like "services1.arcgis.com/1vIhDJwtG5eNmiqX/ArcGIS/rest/services", just
+        the name is needed.  i.e. "DPW_WP_SITES_DEV_VIEW".
+      index_of_layer_in_FS (int): The index of the layer in the Feature Service.
+        This will frequently be 0, but it could be a higer number if the FS has
+        multiple layers in it.
+      object_ids (list of str): List of OBJECTID's that should be querried.
+      fields_to_report (list of str): List of fields in the database that should
+        be reported on.
+      token (str): Obtained from the Get_Token().
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      To print out a report using the OBJECTID list obtained from
+      Get_AGOL_Object_Ids_Where() function.  Pass in a list of fields that you
+      want reported and the script will print out the field and the fields value
+      for each OBJECTID passed into this function.
+    """
+    print '--------------------------------------------------------------------'
+    print 'Starting AGOL_Query_Features()'
+    import urllib2, urllib, json
+
+
+    # Turn the list of object_ids into one string with comma separated IDs,
+    #   Then url encode it
+    object_ids_str = ','.join(str(x) for x in object_ids)
+    encoded_obj_ids = urllib.quote(object_ids_str)
+
+    # Turn the list of required fields into one string with comma separations
+    #   Then url encode it
+    fields_to_report_str = ','.join(str(x) for x in fields_to_report)
+    encoded_fields_to_rpt = urllib.quote(fields_to_report_str)
+
+    print '  Querying Features in FS: "{}" and index "{}"'.format(name_of_FS, index_of_layer_in_FS)
+    print '  OBJECTIDs to be queried: {}'.format(object_ids_str)
+    print '  Fields to be reported on: {}'.format(fields_to_report_str)
+
+    # Set URLs
+    query_url = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/ArcGIS/rest/services/{}/FeatureServer/{}/query'.format(name_of_FS, index_of_layer_in_FS)
+    query = '?where=&objectIds={}&outFields={}&returnGeometry=false&f=json&token={}'.format(encoded_obj_ids,encoded_fields_to_rpt, token)
+    get_report_url = query_url + query
+    ##print get_report_url
+
+    # Get the report data and print
+    response = urllib2.urlopen(get_report_url)
+    response_json_obj = json.load(response)
+    ##print response_json_obj
+
+    # Print out a report for each field for each feature in the object_ids list
+    print '\n  Reporting:'
+    for feature in (response_json_obj['features']):
+        for field in fields_to_report:
+            print '    {}: {}'.format(field, feature['attributes'][field])
+        print ''
+
+    print 'Finished AGOL_Query_Features()\n'
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -445,68 +580,77 @@ def AGOL_Update_Features(name_of_FS, index_of_layer_in_FS, object_id, field_to_u
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
-#                       FUNCTION:    Get AGOL token
-def AGOL_Get_Token(cfgFile, gtURL="https://www.arcgis.com/sharing/rest/generateToken"):
+#                 FUNCTION:  Unregister AGOL Replica IDs
+
+def AGOL_Unregister_Replica_Ids(name_of_FS, token):
     """
     PARAMETERS:
-      cfgFile (str):
-        Path to the .txt file that holds the user name and password of the
-        account used to access the data.  This account must be in a group
-        that has access to the online database.
-        The format of the config file should be as below with
-        <username> and <password> completed:
-
-          [AGOL]
-          usr: <username>
-          pwd: <password>
-
-      gtURL {str}: URL where ArcGIS generates tokens. OPTIONAL.
-
-    VARS:
-      token (str):
-        a string 'password' from ArcGIS that will allow us to to access the
-        online database.
+      name_of_FS (str): The name of the Feature Service (do not include things
+        like "services1.arcgis.com/1vIhDJwtG5eNmiqX/ArcGIS/rest/services", just
+        the name is needed.  i.e. "DPW_WP_SITES_DEV_VIEW".
+      token (str): Obtained from the Get_Token().
 
     RETURNS:
-      token (str): A long string that acts as an access code to AGOL servers.
-        Used in later functions to gain access to our data.
+      None
 
-    FUNCTION: Gets a token from AGOL that allows access to the AGOL data.
+    FUNCTION:
+      To be used to get a list of replicas for an AGOL Feature Service and then
+      ask the user if they wish to unregister the replicas that were listed.
+      This will primarily be used to be allowed to overwrite an existing FS that
+      has replicas from other users who have not removed a map from Collector.
+
+    NOTE: This function assumes that you have obtained a Token with Get_Token()
     """
-
     print '--------------------------------------------------------------------'
-    print "Getting Token..."
+    print 'Starting AGOL_Unregister_Replica_Ids()'
+    import urllib2, urllib, json
 
-    import ConfigParser, urllib, urllib2, json
+    #---------------------------------------------------------------------------
+    #              Get list of Replicas for the Feature Service
 
-    # Get the user name and password from the cfgFile
-    configRMA = ConfigParser.ConfigParser()
-    configRMA.read(cfgFile)
-    usr = configRMA.get("AGOL","usr")
-    pwd = configRMA.get("AGOL","pwd")
+    # Set the URLs
+    list_replica_url     = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/arcgis/rest/services/{}/FeatureServer/replicas'.format(name_of_FS)
+    query                = '?f=json&token={}'.format(token)
+    get_replica_list_url = list_replica_url + query
+    ##print get_replica_list_url
 
-    # Create a dictionary of the user name, password, and 2 other keys
-    gtValues = {'username' : usr, 'password' : pwd, 'referer' : 'http://www.arcgis.com', 'f' : 'json' }
+    # Get the replicas
+    print '  Getting replicas for: {}'.format(name_of_FS)
+    response = urllib2.urlopen(get_replica_list_url)
+    replica_json_obj = json.load(response)
+    ##print replica_json_obj
 
-    # Encode the dictionary so they are in URL format
-    gtData = urllib.urlencode(gtValues)
+    if len(replica_json_obj) == 0:
+        print '  No replicas for this feature service.'
+    else:
+        #-----------------------------------------------------------------------
+        #               Print out the replica ID and username owner
+        for replica in replica_json_obj:
+            print '  Replica: {}'.format(replica['replicaID'])
 
-    # Create a request object with the URL adn the URL formatted dictionary
-    gtRequest = urllib2.Request(gtURL,gtData)
+            list_replica_url = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/arcgis/rest/services/{}/FeatureServer/replicas/{}'.format(name_of_FS, replica['replicaID'])
+            query            = '?f=json&token={}'.format(token)
+            replica_url      = list_replica_url + query
+            response = urllib2.urlopen(replica_url)
+            owner_json_obj = json.load(response)
+            print '  Is owned by: {}\n'.format(owner_json_obj['replicaOwner'])
 
-    # Store the response to the request
-    gtResponse = urllib2.urlopen(gtRequest)
+        #-----------------------------------------------------------------------
+        #                      Unregister Replicas
+        # Ask user if they want to unregister the replicas mentioned above
+        unregister_replicas = raw_input('Do you want to unregister the above replicas? (y/n)')
 
-    # Store the response as a json object
-    gtJson = json.load(gtResponse)
+        if unregister_replicas == 'y':
+            for replica in replica_json_obj:
+                print '  Unregistering replica: {}'.format(replica['replicaID'])
+                unregister_url = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/ArcGIS/rest/services/{}/FeatureServer/unRegisterReplica?token={}'.format(name_of_FS, token)
+                unregister_params = urllib.urlencode({'replicaID': replica['replicaID'], 'f':'json'})
 
-    # Store the token from the json object
-    token = gtJson['token']
-    ##print token  # For testing purposes
+                response = urllib2.urlopen(unregister_url, unregister_params)
+                unregister_json_obj = json.load(response)
+                print '    Success: {}'.format(unregister_json_obj['success'])
 
-    print "Successfully retrieved token.\n"
-
-    return token
+    print 'Finished AGOL_Unregister_Replica_Ids()'
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -584,6 +728,42 @@ def Append_Data(input_item, target, schema_type, field_mapping=None):
     arcpy.Append_management(input_item, target, schema_type, field_mapping)
 
     print 'Successfully appended data.\n'
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#                         Function Backup Feature Class
+def Backup_FC(full_path_to_fc):
+    """
+    PARAMETERS:
+      full_path_to_fc (str): Full path to the FC you want to create a copy of.
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      To create a copy of a FC.  Primarily as a Backup.  Appends '_BAK' to the
+      end of the copied FC.  The FC is copied to the same workspace as the
+      original FC.  The original FC remains unchanged.
+    """
+
+    arcpy.env.overwriteOutput = True
+    import os
+
+    print '--------------------------------------------------------------------'
+    print 'Starting Backup_FC'
+
+
+    in_features = full_path_to_fc
+    out_path    = os.path.dirname(full_path_to_fc)
+    out_name    = '{}_BAK'.format(os.path.basename(full_path_to_fc))
+
+    print '  Backing up FC: {}'.format(in_features)
+    print '             To: {}'.format(out_path)
+    print '             As: {}'.format(out_name)
+
+    arcpy.FeatureClassToFeatureClass_conversion (in_features, out_path, out_name)
+
+    print 'Successfully Backed up FC\n'
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -870,6 +1050,30 @@ def Create_FGDB(path_name_FGDB, overwrite_if_exists=False):
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
+#                          FUNCTION Delete_Features()
+def Delete_Features(in_fc):
+    """
+    PARAMETERS:
+      in_fc (str): Full path to a Feature Class.
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      To delete the features from one FC.
+    """
+
+    print '--------------------------------------------------------------------'
+    print 'Starting Delete_Features()...'
+
+    print '  Deleting Features from: "{}"'.format(in_fc)
+
+    arcpy.DeleteFeatures_management(in_fc)
+
+    print 'Finished Delete_Features()\n'
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 #                                 FUNCTION Delete_Rows()
 def Delete_Rows(in_table):
     """
@@ -887,7 +1091,7 @@ def Delete_Rows(in_table):
 
     print '  Deleting Rows from: "{}"'.format(in_table)
 
-    arcpy.DeleteRows_management(in_table, out_table)
+    arcpy.DeleteRows_management(in_table)
 
     print 'Finished Delete_Rows()\n'
 
@@ -1250,6 +1454,74 @@ def Export_To_Excel(wkg_folder, wkg_FGDB, table_to_export, export_folder, dt_to_
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
+#                         FUNCTION: Extract Parcels
+def Extract_Parcels(parcels_all, related_fc, parcels_int_related_fc):
+    """
+    PARAMETERS:
+      parcels_all (str): Full path to the PARCELS_ALL FC.  This should be an SDE
+        FC.
+
+      related_fc (str):  Full path to a FC that will be used to select parcels
+        that intersect features in this FC.
+
+      parcels_int_related_fc (str):  Full path to an EXISTING FC that will contain
+        the selected parcels.
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      To select the parcels that intersect the 'related_fc' features and then
+      appending the selected parcels into the the 'parcels_int_related_fc'.
+
+      This function is usually used to speed up other geoprocessing tasks that
+      may be performed on a parcels database.
+
+      NOTE: This function deletes the existing features in the
+        'parcels_int_related_fc' before appending the selected parcels so we get
+        a 'fresh' FC each run of the script AND there is no schema lock to worry
+        about.
+    """
+
+    print '--------------------------------------------------------------------'
+    print 'Starting Extract_Parcels()'
+
+    print '  PARCELS_ALL FC path:\n    {}'.format(parcels_all)
+    print '  Related FC used to select parcels:\n    {}'.format(related_fc)
+
+    # Delete the existing features
+    print '  Deleting the old existing parcels at:\n    {}'.format(parcels_int_related_fc)
+    arcpy.DeleteFeatures_management(parcels_int_related_fc)
+
+    # Make a feature layer out of the PARCELS_ALL FC
+    arcpy.MakeFeatureLayer_management(parcels_all, 'par_all_lyr')
+
+    # Select Parcels that intersect with the DA Reports
+    print '\n  Selecting parcels that intersect with the DA Reports'
+    arcpy.SelectLayerByLocation_management('par_all_lyr', 'INTERSECT', related_fc)
+
+    # Get count of selected parcels
+    count = Get_Count_Selected('par_all_lyr')
+    print '  There are: "{}" selected parcels\n'.format(count)
+
+    # Export selected parcels
+    if (count != 0):
+
+        # Append the newly selected features
+        print '  Appending the selected parcels to:\n    {}'.format(parcels_int_related_fc)
+        arcpy.Append_management('par_all_lyr', parcels_int_related_fc, 'NO_TEST')
+
+    else:
+        print '*** WARNING! There were no selected parcels. ***'
+        print '  Please find out why there were no selected parcels.'
+        print '  Script still allowed to run w/o an error flag.'
+
+    print 'Finished Extract_Parcels()\n'
+
+    return
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 #                        FUNCTION: ADD FIELDS
 
 def Fields_Add_Fields(wkg_data, add_fields_csv):
@@ -1324,6 +1596,135 @@ def Fields_Add_Fields(wkg_data, add_fields_csv):
     print 'Successfully added fields.\n'
 
     return
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#                     FUNCTION: CALCULATE FIELDS
+
+def Fields_Calculate_Fields(wkg_data, calc_fields_csv):
+    """
+    PARAMETERS:
+      wkg_data (str) = Name of the working FC in the wkgGDB. This is the FC
+        that is processed.
+      calc_fields_csv (str) = Full path to the CSV file that lists which fields
+        should be calculated, and how they should be calculated.
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      To calculate fields in the wkg_data using a CSV file located at
+      calc_fields_csv.
+    """
+    import csv
+
+    print '--------------------------------------------------------------------'
+    print 'Calculating fields in:\n  %s' % wkg_data
+    print '  Using Control CSV at:\n    {}\n'.format(calc_fields_csv)
+
+    # Make a table view so we can perform selections
+    arcpy.MakeTableView_management(wkg_data, 'wkg_data_view')
+
+    #---------------------------------------------------------------------------
+    #                   Get values from the CSV file:
+    #                FieldsToCalculate.csv (calc_fields_csv)
+    with open (calc_fields_csv) as csv_file:
+        readCSV = csv.reader(csv_file, delimiter = ',')
+
+        where_clauses = []
+        calc_fields = []
+        calcs = []
+
+        row_num = 0
+        for row in readCSV:
+            if row_num > 1:
+                where_clause = row[0]
+                calc_field   = row[2]
+                calc         = row[4]
+
+                where_clauses.append(where_clause)
+                calc_fields.append(calc_field)
+                calcs.append(calc)
+            row_num += 1
+
+    num_calcs = len(where_clauses)
+    print '    There are %s calculations to perform:\n' % str(num_calcs)
+
+    #---------------------------------------------------------------------------
+    #                    Select features and calculate them
+    f_counter = 0
+    while f_counter < num_calcs:
+        #-----------------------------------------------------------------------
+        #               Select features using the where clause
+
+        in_layer_or_view = 'wkg_data_view'
+        selection_type   = 'NEW_SELECTION'
+        my_where_clause  = where_clauses[f_counter]
+
+        print '      Selecting features where: "%s"' % my_where_clause
+
+        # Process
+        arcpy.SelectLayerByAttribute_management(in_layer_or_view, selection_type, my_where_clause)
+
+        #-----------------------------------------------------------------------
+        #     If features selected, perform one of the following calculations
+        # The calculation that needs to be performed depends on the field or the calc
+        #    See the options below:
+
+        countOfSelected = arcpy.GetCount_management(in_layer_or_view)
+        count = int(countOfSelected.getOutput(0))
+        print '        There was/were %s feature(s) selected.' % str(count)
+
+        if count != 0:
+            in_table   = in_layer_or_view
+            field      = calc_fields[f_counter]
+            calc       = calcs[f_counter]
+
+            #-------------------------------------------------------------------
+            # Test if the user wants to calculate the field being equal to
+            # ANOTHER FIELD by seeing if the calculation starts or ends with an '!'
+            if (calc.startswith('!') or calc.endswith('!')):
+                f_expression = calc
+
+                try:
+                    # Process
+                    arcpy.CalculateField_management(in_table, field, f_expression, expression_type="PYTHON_9.3")
+
+                    print ('        From selected features, calculated field: %s, so that it equals FIELD: %s\n'
+                            % (field, f_expression))
+
+                except Exception as e:
+                    print '*** WARNING! Field: %s was not able to be calculated.***\n' % field
+                    print str(e)
+
+            #-------------------------------------------------------------------
+            # If calc does not start or end with a '!', it is probably because the
+            # user wanted to calculate the field being equal to a STRING
+            else:
+                s_expression = "'%s'" % calc
+
+                try:
+                    # Process
+                    arcpy.CalculateField_management(in_table, field, s_expression, expression_type="PYTHON_9.3")
+
+                    print ('        From selected features, calculated field: %s, so that it equals STRING: %s\n'
+                            % (field, s_expression))
+
+                except Exception as e:
+                    print '*** WARNING! Field: %s was not able to be calculated.***\n' % field
+                    print str(e)
+
+        else:
+            print ('        WARNING.  No records were selected.  Did not perform calculation.\n')
+
+        #-----------------------------------------------------------------------
+
+        # Clear selection before looping back through to the next selection
+        arcpy.SelectLayerByAttribute_management(in_layer_or_view, 'CLEAR_SELECTION')
+
+        f_counter += 1
+
+    print 'Successfully calculated fields.\n'
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -1429,6 +1830,8 @@ def Get_DT_To_Append():
 #                          FUNCTION: Get_List_Of_Parcels
 def Get_List_Of_Parcels(rmaTrack, parcel_fc, roadBufferVal):
     """
+    FUNCTION:
+      Specific Function for a RMA Script
     """
 
     # Make feature layers needed below
@@ -1482,98 +1885,94 @@ def Get_List_Of_Parcels(rmaTrack, parcel_fc, roadBufferVal):
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
-#                 FUNCTION:  Unregister AGOL Replica IDs
-
-def Unregister_AGOL_Replica_Ids(name_of_FS, token):
+#                         FUNCTION: Get Newest Data
+def Get_Newest_Data(FGDB_path):
     """
     PARAMETERS:
-      name_of_FS (str): The name of the Feature Service (do not include things
-        like "services1.arcgis.com/1vIhDJwtG5eNmiqX/ArcGIS/rest/services", just
-        the name is needed.  i.e. "DPW_WP_SITES_DEV_VIEW".
-      token (str): Obtained from the Get_Token().
+      FGDB_path (str): Full path to a FGDB that contains the data to be searched.
+        Data in this FGDB must contain FC's that are all named the same with the
+        only difference between the FC's is that their time stamp is different.
+        See below for info about the timestamp naming convention.
 
     RETURNS:
-      None
+      newest_download_path(str): Full path to a FC that contains the newest
+        downloaded data.
 
     FUNCTION:
-      To be used to get a list of replicas for an AGOL Feature Service and then
-      ask the user if they wish to unregister the replicas that were listed.
-      This will primarily be used to be allowed to overwrite an existing FS that
-      has replicas from other users who have not removed a map from Collector.
+      To return the full path of the FC containing the newest data.
+      This works if the FGDB being searched only contains one FC basename and
+      that FC is time stamped as 'YYYY_MM_DD__HH_MM_SS'.
+      This ensures that the newest data will be the first FC in the list
+      (because we do a reverse sort based on the name of the FC).
 
-    NOTE: This function assumes that you have obtained a Token with Get_Token()
+      For example:
+        Data_From_AGOL_2018_01_01__10_00_00
+        Data_From_AGOL_2018_01_02__10_00_00
+        Data_From_AGOL_2018_01_02__10_00_01
     """
+
     print '--------------------------------------------------------------------'
-    print 'Starting Unregister_AGOL_Replica_Ids()'
-    import urllib2, urllib, json
-    success = True
-    #---------------------------------------------------------------------------
-    #              Get list of Replicas for the Feature Service
+    print 'Starting Get_Newest_Data()'
 
-    # Set the URLs
-    list_replica_url     = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/arcgis/rest/services/{}/FeatureServer/replicas'.format(name_of_FS)
-    query                = '?f=json&token={}'.format(token)
-    get_replica_list_url = list_replica_url + query
-    ##print get_replica_list_url
+    arcpy.env.workspace = FGDB_path
+    print 'Finding the newest data in: {}'.format(FGDB_path)
 
-    # Get the replicas
-    try:
-        print '  Getting replicas for: {}'.format(name_of_FS)
-        response = urllib2.urlopen(get_replica_list_url)
-        replica_json_obj = json.load(response)
-        ##print replica_json_obj
+    # List all FC's in the FGDB
+    AGOL_downloads = arcpy.ListFeatureClasses()
 
-        if len(replica_json_obj) == 0:
-            print '  No replicas for this feature service.'
-        else:
-            #-----------------------------------------------------------------------
-            #               Print out the replica ID and username owner
-            for replica in replica_json_obj:
-                print '  Replica: {}'.format(replica['replicaID'])
+    # Sort the FC's alphabetically in reverse (this ensures the most recent date is first)
+    AGOL_downloads.sort(reverse=True)
+    newest_download = AGOL_downloads[0]
 
-                list_replica_url = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/arcgis/rest/services/{}/FeatureServer/replicas/{}'.format(name_of_FS, replica['replicaID'])
-                query            = '?f=json&token={}'.format(token)
-                replica_url      = list_replica_url + query
-                response = urllib2.urlopen(replica_url)
-                owner_json_obj = json.load(response)
-                print '  Is owned by: {}\n'.format(owner_json_obj['replicaOwner'])
+    # Set the path of the newest data
+    newest_download_path = '{}\{}'.format(FGDB_path, newest_download)
+    print 'The newest download is at:\n  {}'.format(newest_download_path)
 
-                # Ask user if they want to unregister the replicas mentioned above
-                unregister_replicas = raw_input('Do you want to unregister the above replicas? (y/n)')
-    except Exception as e:
-        success = False
-        print '*** ERROR with Getting the Replicas ***'
-        print str(e)
-        if str(e) == 'string indices must be integers':
-            print '  May be a problem with the token\'s permissions to perform the requested action.'
+    print 'Finished Get_Newest_Data()\n'
 
-    if success:
-        try:
-            #-----------------------------------------------------------------------
-            #                      Unregister Replicas
-            if unregister_replicas == 'y':
-                for replica in replica_json_obj:
-                    print '  Unregistering replica: {}'.format(replica['replicaID'])
-                    unregister_url = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/ArcGIS/rest/services/{}/FeatureServer/unRegisterReplica?token={}'.format(name_of_FS, token)
-                    unregister_params = urllib.urlencode({'replicaID': replica['replicaID'], 'f':'json'})
-
-                    response = urllib2.urlopen(unregister_url, unregister_params)
-                    unregister_json_obj = json.load(response)
-                    print '    Success: {}'.format(unregister_json_obj['success'])
-        except Exception as e:
-            print '*** ERROR with Unregistering Replicas ***'
-            print str(e)
-
-    if success:
-        print 'Successfully finished Unregister_AGOL_Replica_Ids()'
-    else:
-        print 'Error with Unregister_AGOL_Replica_Ids()'
+    return newest_download_path
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
-#                          FUNCTION Join 2 Objects
+#               FUNCTION: Join DA Reports with Parcels Extract
+def Join_2_FC_By_Spatial_Join(target_fc, join_fc, output_FGDB):
+    """
+    PARAMETERS:
+      target_fc (str): Full path to the FC you want to be joined
+        to the join_fc.  These are the features you want to add data TO.
 
-def Join_2_Objects(target_obj, target_join_field, to_join_obj, to_join_field, join_type):
+      join_fc (str): Full path to the FC that holds the data
+        you want to get information FROM.
+
+      output_FGDB (str): Path to the FGDB that you want to hold the newly created joined FC.
+        The full path to the FC in this FGDB will be calculated to be the path
+        of this FGDB + the name of the target_fc + '_joined'
+
+    RETURNS:
+      output_fc (str): Full path to the FC that resulted from the spatial join
+
+    FUNCTION:
+      To spatially join the tabular information from the join_fc to the target_fc.
+    """
+
+    print '--------------------------------------------------------------------'
+    print 'Starting Join_2_FC_By_Spatial_Join()'
+
+    output_fc       = '{}\{}_joined'.format(output_FGDB, os.path.basename(target_fc))
+    join_operation   = 'JOIN_ONE_TO_MANY'
+
+    print '  Spatially Joining:\n    {}\n  With:\n    {}\n  Joined FC at:\n    {}'.format(target_fc, join_fc, output_fc)
+    arcpy.SpatialJoin_analysis(target_fc, join_fc, output_fc, join_operation)
+
+    print 'Finished Join_2_FC_By_Spatial_Join()\n'
+
+    return output_fc
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#                    FUNCTION Join 2 Objects by Attribute
+
+def Join_2_Objects_By_Attr(target_obj, target_join_field, to_join_obj, to_join_field, join_type):
     """
     PARAMETERS:
       target_obj (str): The full path to the FC or Table that you want to have
@@ -1610,7 +2009,7 @@ def Join_2_Objects(target_obj, target_join_field, to_join_obj, to_join_field, jo
       multiple joins in one script.
     """
 
-    print '\n    Starting Join_2_Objects()...'
+    print '\n    Starting Join_2_Objects_By_Attr()...'
 
     # Create the layer or view for the target_obj using try/except
     try:
@@ -1638,7 +2037,7 @@ def Join_2_Objects(target_obj, target_join_field, to_join_obj, to_join_field, jo
     ##for field in fields:
     ##    print '    ' + field.name
 
-    print '    Finished Join_2_Objects()\n'
+    print '    Finished Join_2_Objects_By_Attr()\n'
 
     # Return the layer/view of the joined object so it can be processed
     return 'target_obj'
@@ -1775,76 +2174,11 @@ def New_Loc_LocDesc(wkg_data, DPW_WP_SITES):
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
-#                 FUNCTION:  Query_AGOL_Feature
-def Query_AGOL_Features(name_of_FS, index_of_layer_in_FS, object_ids, fields_to_report, token):
-    """
-    PARAMETERS:
-      name_of_FS (str): The name of the Feature Service (do not include things
-        like "services1.arcgis.com/1vIhDJwtG5eNmiqX/ArcGIS/rest/services", just
-        the name is needed.  i.e. "DPW_WP_SITES_DEV_VIEW".
-      index_of_layer_in_FS (int): The index of the layer in the Feature Service.
-        This will frequently be 0, but it could be a higer number if the FS has
-        multiple layers in it.
-      object_ids (list of str): List of OBJECTID's that should be querried.
-      fields_to_report (list of str): List of fields in the database that should
-        be reported on.
-      token (str): Obtained from the Get_Token().
-
-    RETURNS:
-      None
-
-    FUNCTION:
-      To print out a report using the OBJECTID list obtained from
-      Get_AGOL_Object_Ids_Where() function.  Pass in a list of fields that you
-      want reported and the script will print out the field and the fields value
-      for each OBJECTID passed into this function.
-    """
-    print '--------------------------------------------------------------------'
-    print 'Starting Query_AGOL_Features()'
-    import urllib2, urllib, json
-
-
-    # Turn the list of object_ids into one string with comma separated IDs,
-    #   Then url encode it
-    object_ids_str = ','.join(str(x) for x in object_ids)
-    encoded_obj_ids = urllib.quote(object_ids_str)
-
-    # Turn the list of required fields into one string with comma separations
-    #   Then url encode it
-    fields_to_report_str = ','.join(str(x) for x in fields_to_report)
-    encoded_fields_to_rpt = urllib.quote(fields_to_report_str)
-
-    print '  Querying Features in FS: "{}" and index "{}"'.format(name_of_FS, index_of_layer_in_FS)
-    print '  OBJECTIDs to be queried: {}'.format(object_ids_str)
-    print '  Fields to be reported on: {}'.format(fields_to_report_str)
-
-    # Set URLs
-    query_url = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/ArcGIS/rest/services/{}/FeatureServer/{}/query'.format(name_of_FS, index_of_layer_in_FS)
-    query = '?where=&objectIds={}&outFields={}&returnGeometry=false&f=json&token={}'.format(encoded_obj_ids,encoded_fields_to_rpt, token)
-    get_report_url = query_url + query
-    ##print get_report_url
-
-    # Get the report data and print
-    response = urllib2.urlopen(get_report_url)
-    response_json_obj = json.load(response)
-    ##print response_json_obj
-
-    # Print out a report for each field for each feature in the object_ids list
-    print '\n  Reporting:'
-    for feature in (response_json_obj['features']):
-        for field in fields_to_report:
-            print '    {}: {}'.format(field, feature['attributes'][field])
-        print ''
-
-    print 'Finished Query_AGOL_Features()\n'
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
 #                       FUNCTION Select_Object()
-def Select_Object(path_to_obj, selection_type, where_clause):
+def Select_By_Attribute(path_to_obj, selection_type, where_clause):
     """
     PARAMETERS:
-      path_to_obj (str): Full path to the object (Feature Layer or Table) that
+      path_to_obj (str): Full path to the object (Feature Class or Table) that
         is to be selected.
 
       selection_type (str): Selection type.  Valid values are:
@@ -1877,6 +2211,67 @@ def Select_Object(path_to_obj, selection_type, where_clause):
 
     print 'Finished Select_Object()\n'
     return 'lyr'
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#            FUNCTION: Set Date the AGOL data was Downloaded
+def Set_Date_Data_DL(fc_w_timestamp, fc_to_update):
+    """
+    PARAMETERS:
+      fc_w_timestamp (str): Full path to a FC that contains a time stamp
+        of when the data was downloaded (or was 'current').  The time stamp
+        should be in the format 'YYYY_MM_DD__HH_MM_SS'.
+        i.e. 'Data_From_AGOL_2018_01_01__10_00_00'
+
+      fc_to_update (str): Full path to a FC or Table that contains a field named
+        'AGOL_Data_Last_Downloaded'.  This is the field that we will write the
+        read-friendly formatted time stamp.  If the field name is different,
+        that name will have to be specified below in the function itself.
+
+        i.e. a time stamp of:
+          2018_01_01__14_00_00
+        will become:
+          01 Jan, 2018 - 02:00:00 PM
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      To turn a FC or Table time stamp from 'YYYY_MM_DD__HH_MM_SS' to
+      'DD Month, YYYY - HH:MM:SS AM/PM' and set that read-friendly string into
+      another FC or Table.
+      Specifically we are setting the date and time the data
+      was downloaded from AGOL into a FC that will be used to report when the
+      data was downloaded.
+    """
+    print '--------------------------------------------------------------------'
+    print 'Starting Set_Date_Data_DL()'
+
+    import time
+
+    # Get the last 20 characters from the FC name (i.e. "2018_02_02__11_11_33")
+    dt_stripped = fc_w_timestamp[-20:]
+
+    # Parse the string to time and format the time
+    t = time.strptime(dt_stripped, '%Y_%m_%d__%H_%M_%S')
+    t_formatted = time.mktime(t)
+
+    # Format time back into a string (i.e. "02 Feb, 2018 - 11:11:33 AM"
+    AGOL_data_downloaded = time.strftime("%d %b, %Y - %I:%M:%S %p", time.localtime(t_formatted))
+
+    # Field Calculate the string into the fc_to_update FC
+    fc = fc_to_update
+    field = 'AGOL_Data_Last_Downloaded'
+    expression = '"{}"'.format(AGOL_data_downloaded)
+
+    print '  Calculating field:\n    {}\n  In fc:\n    {} '.format(field, fc)
+    print '  To equal:\n    {}'.format(expression)
+
+    arcpy.CalculateField_management(fc, field, expression)
+
+    print 'Finished Set_Date_Data_DL()\n'
+
+    return
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -1934,80 +2329,6 @@ def Test_Schema_Lock(dataset):
     print 'Finished Test_Schema_Lock()\n'
 
     return no_schema_lock
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-#                 FUNCTION:  Unregister AGOL Replica IDs
-
-def Unregister_AGOL_Replica_Ids(name_of_FS, token):
-    """
-    PARAMETERS:
-      name_of_FS (str): The name of the Feature Service (do not include things
-        like "services1.arcgis.com/1vIhDJwtG5eNmiqX/ArcGIS/rest/services", just
-        the name is needed.  i.e. "DPW_WP_SITES_DEV_VIEW".
-      token (str): Obtained from the Get_Token().
-
-    RETURNS:
-      None
-
-    FUNCTION:
-      To be used to get a list of replicas for an AGOL Feature Service and then
-      ask the user if they wish to unregister the replicas that were listed.
-      This will primarily be used to be allowed to overwrite an existing FS that
-      has replicas from other users who have not removed a map from Collector.
-
-    NOTE: This function assumes that you have obtained a Token with Get_Token()
-    """
-    print '--------------------------------------------------------------------'
-    print 'Starting Unregister_AGOL_Replica_Ids()'
-    import urllib2, urllib, json
-
-    #---------------------------------------------------------------------------
-    #              Get list of Replicas for the Feature Service
-
-    # Set the URLs
-    list_replica_url     = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/arcgis/rest/services/{}/FeatureServer/replicas'.format(name_of_FS)
-    query                = '?f=json&token={}'.format(token)
-    get_replica_list_url = list_replica_url + query
-    ##print get_replica_list_url
-
-    # Get the replicas
-    print '  Getting replicas for: {}'.format(name_of_FS)
-    response = urllib2.urlopen(get_replica_list_url)
-    replica_json_obj = json.load(response)
-    ##print replica_json_obj
-
-    if len(replica_json_obj) == 0:
-        print '  No replicas for this feature service.'
-    else:
-        #-----------------------------------------------------------------------
-        #               Print out the replica ID and username owner
-        for replica in replica_json_obj:
-            print '  Replica: {}'.format(replica['replicaID'])
-
-            list_replica_url = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/arcgis/rest/services/{}/FeatureServer/replicas/{}'.format(name_of_FS, replica['replicaID'])
-            query            = '?f=json&token={}'.format(token)
-            replica_url      = list_replica_url + query
-            response = urllib2.urlopen(replica_url)
-            owner_json_obj = json.load(response)
-            print '  Is owned by: {}\n'.format(owner_json_obj['replicaOwner'])
-
-        #-----------------------------------------------------------------------
-        #                      Unregister Replicas
-        # Ask user if they want to unregister the replicas mentioned above
-        unregister_replicas = raw_input('Do you want to unregister the above replicas? (y/n)')
-
-        if unregister_replicas == 'y':
-            for replica in replica_json_obj:
-                print '  Unregistering replica: {}'.format(replica['replicaID'])
-                unregister_url = r'https://services1.arcgis.com/1vIhDJwtG5eNmiqX/ArcGIS/rest/services/{}/FeatureServer/unRegisterReplica?token={}'.format(name_of_FS, token)
-                unregister_params = urllib.urlencode({'replicaID': replica['replicaID'], 'f':'json'})
-
-                response = urllib2.urlopen(unregister_url, unregister_params)
-                unregister_json_obj = json.load(response)
-                print '    Success: {}'.format(unregister_json_obj['success'])
-
-    print 'Finished Unregister_AGOL_Replica_Ids()'
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
