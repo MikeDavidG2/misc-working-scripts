@@ -25,17 +25,17 @@ Set the following variables in the script:
 
 Set the following variables in the cfgFile:
     [Download_Info]
-    Log_File_Folder=
-    Attachment_Folder=
-    FS_name=
+    Log_File_Folder =
+    Attachment_Folder =
+    FS_name =
 
     [AGOL]
-    usr= (for an AGOL account with permission to access the FS_name)
-    pwd= (for an AGOL account with permission to access the FS_name)
+    usr = (for an AGOL account with permission to access the FS_name)
+    pwd = (for an AGOL account with permission to access the FS_name)
 
     [email]
-    usr= (for an email account)
-    pwd= (for an email account)
+    usr = (for an email account)
+    pwd = (for an email account)
 """
 #
 # Author:      mgrue
@@ -95,7 +95,7 @@ def main():
     # Full path to a text file that has the username and password of an account
     #  that has access to at least VIEW the FS in AGOL, as well as an email
     #  account that has access to send emails.
-    cfgFile     = r"{}\<Path_to_INI_file_here>".format(path_prefix)
+    cfgFile     = r"{}\<Path_to_INI_file_here>.ini".format(path_prefix)
 
     #---------------------------------------------------------------------------
     # Set variables from the cfgFile

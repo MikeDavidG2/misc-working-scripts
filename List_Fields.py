@@ -16,10 +16,10 @@ import arcpy
 
 # Change the below variable to print the fields at this table
 # It should be a full path and FC or Table name
-FC_or_table = r'E:\SAN DIEGO\GIS\Historic_Addresses.shp'
+FC_or_table = r'P:\DPW_ScienceAndMonitoring\Scripts\DEV\Data\DPW_Science_and_Monitoring_prod_COPY.gdb\VISIT_ONLY_FIELDS'
 
 # Decide if you want the list returned as it is ordered in ArcCatalog or in alphabetical order
-alpha_or_as_ordered = 'alpha'
+alpha_or_as_ordered = 'as_ordered'
 
 #-------------------------------------------------------------------------------
 def main():
@@ -31,7 +31,7 @@ def main():
     # Print as ordered in ArcCatalog
     if alpha_or_as_ordered == 'as_ordered':
         for field in fields:
-            print field.name
+            print '{},{},{},{},{}'.format(field.name, field.type, field.length, field.aliasName, field.domain)
 
     # Print in alphabetical order
     elif alpha_or_as_ordered == 'alpha':

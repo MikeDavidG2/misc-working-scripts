@@ -13,7 +13,7 @@ import csv, arcpy, time
 def main():
 
     # Set Only Variable you should need to change
-    csv_with_schema = r"P:\Damage_Assessment_GIS\Fire_Damage_Assessment\Documentation\Schema_Creation_SDEP2_FC.csv"
+    csv_with_schema = r"P:\DPW_ScienceAndMonitoring\Documentation\Schema_Creation_DPW_WP_FIELD_DATA.csv"
 
 
     #---------------------------------------------------------------------------
@@ -58,7 +58,6 @@ def main():
                     print '-----'
                     print str(e)
             row_num += 1
-            time.sleep(1)
             print '\n----------------------------------------------------------'
 
     #---------------------------------------------------------------------------
