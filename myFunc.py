@@ -52,6 +52,211 @@ def AGOL_Delete_Features(name_of_FS, index_of_layer_in_FS, object_ids, token):
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
+#                         FUNCTION:   Get Attachments
+# Attachments (images) are obtained by hitting the REST endpoint of the feature
+# service (gaURL) and returning a URL that downloads a JSON file (which is a
+# replica of the database).  The script then uses that downloaded JSON file to
+# get the URL of the actual images.  The JSON file is then used to get the
+# StationID and SampleEventID of the related feature so they can be used to name
+# the downloaded attachment.
+
+#TODO: find a way to rotate the images clockwise 90-degrees
+
+# This function is DEPRICATED.  Better to use stand alone script
+# Download_AGOL_Attachments_All.py
+def AGOL_Get_Attachments(token, gaURL, gaFolder, SmpEvntIDs_dl, dt_to_append):
+    """
+    PARAMETERS:
+        token (str):
+            The string token obtained in FUNCTION Get_Token().
+        gaURL (str):
+            The variable set in FUNCTION main() where we can request to create a
+            replica FGDB in json format.
+        wkgFolder (str):
+            The variable set in FUNCTION main() which is a path to our working
+            folder.
+        dt_to_append (str):
+            The date and time string returned by FUNCTION Get_DateAndTime().
+
+    VARS:
+        replicaUrl (str):
+            URL of the replica FGDB in json format.
+        JsonFileName (str):
+            Name of the temporary json file.
+        gaFolder (str):
+            A folder in the wkgFolder that holds the attachments.
+        gaRelId (str):
+            The parentGlobalId of the attachment.  This = the origId for the
+            related feature.
+        origId (str):
+            The GlobalId of the feature.  This = the parentGlobalId of the
+            related attachment.
+        origName1 (str):
+            The StationID of the related feature to the attachment.
+        origName2 (str):
+            The SampleEventID of the related feature to the attachment.
+        attachName (str):
+            The string concatenation of origName1 and origName2 to be used to
+            name the attachment.
+        dupList (list of str):
+            List of letters ('A', 'B', etc.) used to append to the end of an
+            image to prevent multiple images with the same StationID and
+            SampleEventID overwriting each other.
+        attachmentUrl:
+            The URL of each specific attachment.  Need a token to actually
+            access and download the image at this URL.
+
+    RETURNS:
+        gaFolder (str):
+            So that the email can send that information.
+
+    FUNCTION:
+      Gets the attachments (images) that are related to the database features and
+      stores them as .jpg in a local file inside the wkgFolder.
+    """
+
+    print '--------------------------------------------------------------------'
+    print 'Getting Attachments...'
+
+    # Flag to set if Attachments were downloaded.  Set to 'True' if downloaded
+    attachment_dl = False
+
+    #---------------------------------------------------------------------------
+    #                       Get the attachments url (ga)
+    # Set the values in a dictionary
+    gaValues = {
+    'f' : 'json',
+    'replicaName' : 'Bacteria_TMDL_Replica',
+    'layers' : '0',
+    'geometryType' : 'esriGeometryPoint',
+    'transportType' : 'esriTransportTypeUrl',
+    'returnAttachments' : 'true',
+    'returnAttachmentDatabyURL' : 'false',
+    'token' : token
+    }
+
+    # Get the Replica URL
+    print '  Getting Replica URL'
+    gaData = urllib.urlencode(gaValues)
+    gaRequest = urllib2.Request(gaURL, gaData)
+    gaResponse = urllib2.urlopen(gaRequest)
+    gaJson = json.load(gaResponse)
+    try:
+        replicaUrl = gaJson['URL'] # Try to load the 'URL' key of the replica
+
+    # If the 'URL' key doesn't exist, print out the error message and details
+    except KeyError:
+        print '*** Key Error! ***'
+        print '  {}\n  {}'.format(gaJson['error']['message'], gaJson['error']['details'])
+        print '  Replica URL: %s' % str(replicaUrl)  # For testing purposes
+
+    # Set the token into the URL so it can be accessed
+    replicaUrl_token = replicaUrl + '?&token=' + token + '&f=json'
+    ##print '  Replica URL Token: %s' % str(replicaUrl_token)  # For testing purposes
+
+    #---------------------------------------------------------------------------
+    #                         Save the JSON file
+    # Access the URL and save the file to the current working directory named
+    # 'myLayer.json'.  This will be a temporary file and will be deleted
+
+    JsonFileName = 'Temp_JSON_%s.json' % dt_to_append
+
+    # Save the file
+    # NOTE: the file is saved to the 'current working directory' + 'JsonFileName'
+    urllib.urlretrieve(replicaUrl_token, JsonFileName)
+
+    # Allow the script to access the saved JSON file
+    cwd = os.getcwd()  # Get the current working directory
+    jsonFilePath = cwd + '\\' + JsonFileName # Path to the downloaded json file
+    print '  Temp JSON file saved to: ' + jsonFilePath
+
+    #---------------------------------------------------------------------------
+    #                       Save the attachments
+
+    # Make the gaFolder (to hold attachments) if it doesn't exist.
+    if not os.path.exists(gaFolder):
+        os.makedirs(gaFolder)
+
+    # Open the JSON file
+    with open (jsonFilePath) as data_file:
+        data = json.load(data_file)
+
+    # Save the attachments
+    # Loop through each 'attachment' and get its parentGlobalId so we can name
+    #  it based on its corresponding feature
+    print '  Attempting to save attachments:'
+
+    for attachment in data['layers'][0]['attachments']:
+        gaRelId = attachment['parentGlobalId']
+
+        # Now loop through all of the 'features' and break once the corresponding
+        #  GlobalId's match so we can save based on the 'StationID'
+        #  and 'SampleEventID'
+        for feature in data['layers'][0]['features']:
+            origId = feature['attributes']['globalid']
+            StationID = feature['attributes']['StationID']
+            SampleEventID = str(feature['attributes']['SampleEventID'])
+            if origId == gaRelId:
+                break
+
+        # Test to see if the StationID is one of the features downloaded in
+        # FUNCTION Get_Data. Download if so, ignore if not
+        if SampleEventID in SmpEvntIDs_dl:
+            attachName = '%s__%s' % (StationID, SampleEventID)
+            # 'i' and 'dupList' are used in the event that there are
+            #  multiple photos with the same StationID and SampleEventID.  If they
+            #  do have the same attributes as an already saved attachment, the letter
+            #  suffix at the end of the attachment name will increment to the next
+            #  letter.  Ex: if there are two SDR-100__9876, the first will always be
+            #  named 'SDR-1007__9876_A.jpg', the second will be 'SDR-1007__9876_B'
+            i = 0
+            dupList = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+            attachPath = gaFolder + '\\' + attachName + '_' + dupList[i] + '.jpg'
+
+            # Test to see if the attachPath currently exists
+            while os.path.exists(attachPath):
+                # The path does exist, so go through the dupList until a 'new' path is found
+                i += 1
+                attachPath = gaFolder + '\\' + attachName + '_' + dupList[i] + '.jpg'
+
+                # Test the new path to see if it exists.  If it doesn't exist, break out
+                # of the while loop to save the image to that new path
+                if not os.path.exists(attachPath):
+                    break
+
+            # Only download the attachment if the picture is from A - G
+            # 'H' is a catch if there are more than 7 photos with the same Station ID
+            # and Sample Event ID, shouldn't be more than 7 so an 'H' pic is passed.
+            if (dupList[i] != 'H'):
+                # Get the token to download the attachment
+                gaValues = {'token' : token }
+                gaData = urllib.urlencode(gaValues)
+
+                # Get the attachment and save as attachPath
+                print '    Saving %s' % attachName
+                attachment_dl = True
+
+                attachmentUrl = attachment['url']
+                urllib.urlretrieve(url=attachmentUrl, filename=attachPath,data=gaData)
+
+            else:
+                print '  WARNING.  There were more than 7 pictures with the same Station ID and Sample Event ID. Picture not saved.'
+
+    if (attachment_dl == False):
+        print '    No attachments saved this run.  OK if no attachments submitted since last run.'
+
+    print '  All attachments can be found at: %s' % gaFolder
+
+    # Delete the JSON file since it is no longer needed.
+    print '  Deleting JSON file'
+    os.remove(jsonFilePath)
+
+    print 'Successfully got attachments.\n'
+
+    return gaFolder
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 #                             FUNCTION Get_AGOL_Data_All()
 def AGOL_Get_Data_All(AGOL_fields, token, FS_url, index_of_layer, wkg_folder, wkg_FGDB, FC_name):
     """
@@ -1725,6 +1930,158 @@ def Fields_Calculate_Fields(wkg_data, calc_fields_csv):
         f_counter += 1
 
     print 'Successfully calculated fields.\n'
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#                          FUNCTION DELETE FIELDS
+def Fields_Delete_Fields(wkg_data, delete_fields_csv):
+    """
+    PARAMETERS:
+      wkg_data (str) = Name of the working FC in the wkgGDB. This is the FC
+        that is processed.  It is overwritten each time the script is run.
+      delete_fields_csv (str) = Full path to the CSV file that lists which
+        fields should be deleted.
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      To delete fields from the wkg_data using a CSV file located at
+      delete_fields_csv.
+    """
+
+    print '--------------------------------------------------------------------'
+    print 'Deleting fields in:\n    %s' % wkg_data
+    print '  Using Control CSV at:\n    {}\n'.format(delete_fields_csv)
+
+    #---------------------------------------------------------------------------
+    #                     Get values from the CSV file
+    with open (delete_fields_csv) as csv_file:
+        readCSV  = csv.reader(csv_file, delimiter = ',')
+
+        delete_fields = []
+
+        row_num = 0
+        for row in readCSV:
+            if row_num > 1:
+                delete_field = row[0]
+                delete_fields.append(delete_field)
+            row_num += 1
+
+    num_calcs = len(delete_fields)
+    print '    There is/are %s deletion(s) to perform.\n' % str(num_calcs)
+
+    #---------------------------------------------------------------------------
+    #                          Delete fields
+
+    # If there is at least one field to delete, delete it
+    if num_calcs > 0:
+        f_counter = 0
+        while f_counter < num_calcs:
+            drop_field = delete_fields[f_counter]
+            print '    Deleting field: %s...' % drop_field
+
+            arcpy.DeleteField_management(wkg_data, drop_field)
+
+            f_counter += 1
+
+        print 'Successfully deleted fields.\n'
+
+    else:
+        print 'WARNING.  NO fields were deleted.'
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#                           FUNCTION: GET FIELD MAPPINGS
+def Fields_Get_Field_Mappings(orig_table, prod_table, map_fields_csv):
+    """
+    PARAMETERS:
+      orig_table (str): Full path to the converted TABLE (from the working FC).
+      prod_table (str): Full path to the production TABLE that contains the
+        most up-to-date data.
+      map_fields_csv (str): Full path to the CSV file that lists which fields
+        in the converted TABLE match the fields in the production TABLE.
+
+    RETURNS:
+      fms (arcpy.FieldMappings object): This object contains the field mappings
+        that can be used when we append the working data to the production data.
+
+    FUNCTION:
+      By using a CSV file that lists fields in the working data and their
+      matching field in the production data, this function gets any non-default
+      field mappings between the working data and the production data. The
+      field mapping object is returned by the function so it can be used in an
+      append function.
+
+    NOTE:
+      This function is only useful if there are any field names that are
+      different between the working database and the production database.
+      This is because the default for an append function is to match the field
+      names between the target dataset and the appending dataset.
+    """
+
+    print '--------------------------------------------------------------------'
+    print 'Getting Field Mappings...'
+
+    #---------------------------------------------------------------------------
+    #                      Get values from the CSV file
+    with open (map_fields_csv) as csv_file:
+        readCSV = csv.reader(csv_file, delimiter = ',')
+
+        # Create blank lists
+        orig_fields = []
+        prod_fields = []
+
+        row_num = 0
+        for row in readCSV:
+            if row_num > 1:
+                # Get values for that row
+                orig_field = row[0]
+                prod_field = row[1]
+
+                orig_fields.append(orig_field)
+                prod_fields.append(prod_field)
+
+            row_num += 1
+
+    num_fm = len(orig_fields)
+    print '  There are %s non-default fields to map.' % str(num_fm)
+
+    #---------------------------------------------------------------------------
+    #           Set the Field Maps into the Field Mapping object
+    # Create FieldMappings obj
+    fms = arcpy.FieldMappings()
+
+    # Add the schema of the production table so that all fields that are exactly
+    # the same name between the orig table and the prod table will be mapped
+    # to each other by default
+    fms.addTable(prod_table)
+
+    # Loop through each pair of listed fields (orig and prod) and add the
+    # FieldMap object to the FieldMappings obj
+    counter = 0
+    while counter < num_fm:
+        print ('  Mapping Orig Field: "%s" to Prod Field: "%s"'
+                                 % (orig_fields[counter], prod_fields[counter]))
+        # Create FieldMap
+        fm = arcpy.FieldMap()
+
+        # Add the input field
+        fm.addInputField(orig_table, orig_fields[counter])
+
+        # Add the output field
+        out_field_obj = fm.outputField
+        out_field_obj.name = prod_fields[counter]
+        fm.outputField = out_field_obj
+
+        # Add the FieldMap to the FieldMappings
+        fms.addFieldMap(fm)
+
+        del fm
+        counter += 1
+
+    print 'Successfully Got Field Mappings\n'
+    return fms
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
