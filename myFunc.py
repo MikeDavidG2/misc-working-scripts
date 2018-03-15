@@ -1402,10 +1402,7 @@ def DPW_WP_SITES_To_Survey123_csv(Sites_Export_To_CSV_tbl, DPW_WP_SITES, Site_In
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
-#                               Function Email_W_Body()
-def Email_W_Body(subj, body, email_list, cfgFile=
-    r"P:\DPW_ScienceAndMonitoring\Scripts\DEV\DEV_branch\Control_Files\accounts.txt"):
-
+def Email_W_Body(subj, body, email_list, cfgFile=r"P:\DPW_ScienceAndMonitoring\DEV\Scripts\Config_Files\accounts.txt"):
     """
     PARAMETERS:
       subj (str): Subject of the email
@@ -1427,7 +1424,13 @@ def Email_W_Body(subj, body, email_list, cfgFile=
     RETURNS:
       None
 
-    FUNCTION: To send an email to the listed recipients.
+    FUNCTION: To send an email to the listed recipients. with a defined
+      subject, body, email list, and a config file.
+
+    NOTE:
+      You can define the alternate_cfgFile_path below if you want to provide
+        a path to a config file with the username/password if the server is
+        calling the script (which would result in a different path than the default).
       If you want to provide a log file to include in the body of the email,
       please use function Email_w_LogFile()
     """
@@ -1435,7 +1438,28 @@ def Email_W_Body(subj, body, email_list, cfgFile=
     from email.mime.multipart import MIMEMultipart
     import ConfigParser, smtplib
 
-    print 'Starting Email_W_Body()'
+    print '  Starting Email_W_Body()\n    Subject = {}'.format(subj)
+
+    # This is the alternate cfgFile path that can point to the cfgFile if the
+    # script is called by a server.  Server called paths may begin with different
+    # mapped drives (i.e. "D:\Projects\my\path\here" as opposed to "P:\my\path\here"
+    alternate_cfgFile_path = r'D:\Projects\DPW_ScienceAndMonitoring\DEV\Scripts\Config_Files\accounts.txt'
+
+    # If the default cfgFile path doesn't exist, try changing the path to the
+    # alternative path.
+    if not os.path.exists(cfgFile):
+        print '    cfgFile does not exist at:\n      {}'.format(cfgFile)
+        print '    Trying the alternate path to the cfgFile...'
+        if os.path.exists(alternate_cfgFile_path):
+            cfgFile = alternate_cfgFile_path
+            print '    Successfully changed cfgFile path to:\n      {}'.format(cfgFile)
+        else:
+            print '\n*** ERROR! The Config File cannot be found at:\n      {}\n    OR\n      {}'.format(cfgFile, alternate_cfgFile_path)
+            print '  The email was not sent.  To fix try one of following:'
+            print '    1) Change the cfgFile path default in Email_W_Body()'
+            print '    2) Change the alternate_cfgFile_path in Email_W_Body()'
+            print '    3) Add the cfgFile to the correct location'
+            return
 
     # Set the subj, From, To, and body
     msg = MIMEMultipart()
@@ -1459,8 +1483,7 @@ def Email_W_Body(subj, body, email_list, cfgFile=
     SMTP_obj.quit()
     time.sleep(2)
 
-    print 'Finished Email_W_Body().'
-
+    print '  Successfully emailed results.'
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -1571,8 +1594,84 @@ def Excel_To_Table(input_excel_file, out_table, sheet):
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
+#                        FUNCTION: Export Excel
+def Export_To_Excel(out_table, excel_export_folder, excel_file_name, dt_to_append='',
+                            fld_name_or_alias='NAME', domain_cd_or_desc='CODE'):
+    """
+    PARAMETERS:
+      out_table (str) = Full path to the FC or Table in a FGDB that you want to
+        export to an Excel file.
+
+      excel_export_folder (str) = Full path to the folder that should hold the
+        Excel file.
+
+      excel_file_name (str) = The base name you want to give to the Excel File
+
+      dt_to_append {str} = The date and time you want to append to the base name
+        set in the excel_file_name variable above. If you don't want to provide
+        a date and time, but want to set the other optional variables below,
+        enter '' for the dt_to_append when calling the function.
+        Optional.
+
+      fld_name_or_alias {str} = How column names in the output are determined.
+        Values:
+          NAME - Column headers will be set using the input's field names.
+                 This is the default.
+          ALIAS - Column headers will be set using the field aliases.
+        Optional.
+
+      domain_cd_or_desc {str} = Controls how the fields with domains are exported.
+        Values:
+          CODE - All field values will be exported as they are in the table.
+                 This is the default.
+          DESCRIPTION - For fields with a coded value domain, the coded value
+                 descriptions will be used.
+        Optional.
+
+    RETURNS:
+      None
+
+    FUNCTION:
+      To export a FC or a Table in a FGDB to an Excel file.
+    """
+    print '--------------------------------------------------------------------'
+    print 'Starting Export_To_Excel()'
+
+    import os, time
+
+    # Make the export folder if it doesn't exist
+    if not os.path.exists(excel_export_folder):
+        print '  Making folder at:\n    {}'.format(excel_export_folder)
+        os.mkdir(excel_export_folder)
+
+    # Format the path and name of the Excel file
+    if dt_to_append == '':
+        export_file = r'{}\{}.xls'.format(excel_export_folder, excel_file_name)
+    else:
+        export_file = r'{}\{}_{}.xls'.format(excel_export_folder, excel_file_name, dt_to_append)
+
+    # Print variables
+    print '  Exporting table to Excel...'
+    print '        From: ' + out_table
+    print '          To: ' + export_file
+    print '   Use Field: ' + fld_name_or_alias
+    print '  Use Domain: ' + domain_cd_or_desc
+
+    # Delete the Excel file if it exists (shouldn't happen if providing a dt_to_append)
+    if os.path.exists(export_file):
+        print '\n  That Excel file already exists, removing old file and replacing\n'
+        os.remove(export_file)
+        time.sleep(2)
+
+    # Export
+    arcpy.TableToExcel_conversion(out_table, export_file, fld_name_or_alias, domain_cd_or_desc)
+
+    print 'Finished Export_To_Excel()\n'
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 #                          FUNCTION:   Export to Excel
-def Export_To_Excel(wkg_folder, wkg_FGDB, table_to_export, export_folder, dt_to_append, report_TMDL_csv):
+def Export_To_Excel_OLD(wkg_folder, wkg_FGDB, table_to_export, export_folder, dt_to_append, report_TMDL_csv):
     """
     NOTE: This function is from DPW_Science_and_Monitoring.py, but is no longer
     being used in that script.
