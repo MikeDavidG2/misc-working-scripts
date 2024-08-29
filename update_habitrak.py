@@ -1,6 +1,7 @@
-"""This script was written by Gary Ross.  It is intended to aggregate the
-Habitrak data on the P drive (located at: P:\habitrak\data\County of San Diego.mdb)
-so that it mimics the schema on SDE (located at: SDE.SANGIS.ECO_MSCP_HABITRAK_CN)
+"""This script was written by Gary Ross.  with minor mods by Michael Grue
+It is intended to aggregate the Habitrak data on the P drive
+(located at: P:\habitrak\data\County of San Diego.mdb) so that it mimics the schema on SDE
+(located at: SDE.SANGIS.ECO_MSCP_HABITRAK_CN)
 
 You will need to confirm that the inputData and workspace are correct,
 but otherwise the script shouldn't need ammending.
